@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ranking · Atendimentos Blip</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+
+<!-- ══════════════════════════════════════════════════
+     CONFIGURAÇÃO — edite somente este bloco
+     O TOKEN não fica aqui — é pedido na tela de login
+     e salvo apenas no navegador do usuário.
+═════════════════════════════════════════════════════ -->
+<script>
+const CONFIG = {
+  contractId:        "techmetria1",
+  intervaloSegundos: 20,
+  filaIgnorar:       "Transferência direta",
+  filas: {
+    "Gestão": {
+      cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢",
+      atendentes: ["Miguel Carvalho","Matheus Muniz","Sara Santana",
+                   "Nadiel Coutinho","Nathalia Gomes","Lucas França","Mirella Santos"]
+    },
+    "Comercial": {
+      cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈",
+      atendentes: ["Renatto Fagundes","Juliana Gomes"]
+    },
+    "Financeiro": {
+      cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰",
+      atendentes: ["Nitiele Silva","Gresy Vivian","Camila Patrício","Abraão Nunes"]
+    }
+  }
+};
+</script>
+<!-- ══════════════════════════════════════════════════ -->
+
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#080a0f;--s1:#121620;--s2:#181d28;--s3:#1e2535;
+  --border:rgba(255,255,255,0.06);--border-em:rgba(255,255,255,0.13);
+  --hi:#f0f2f8;--md:#8b95a8;--lo:#3a4254;
+  --accent:#4f8fea;--green:#34d399;--red:#f87171;--yellow:#fbbf24;
+  --display:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;
+  --r:10px;--rl:16px;--rxl:22px;
+}
+html,body{min-height:100vh;background:var(--bg);color:var(--hi);font-family:var(--display);font-size:14px;line-height:1.5;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");background-size:200px;opacity:0.4;}
+
+/* LOGIN */
+.lw{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;}
+.lw.hidden{display:none;}
+.lc{background:var(--s1);border:1px solid var(--border-em);border-radius:var(--rxl);padding:36px 40px;width:100%;max-width:440px;position:relative;z-index:1;}
+.ll{display:flex;align-items:center;gap:12px;margin-bottom:28px;}
+.lli{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(37,99,235,0.35);}
+.llt .t{font-size:16px;font-weight:700;letter-spacing:.02em;}
+.llt .s{font-size:11px;font-family:var(--mono);color:var(--md);letter-spacing:.08em;}
+.lh{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px;}
+.ls{font-size:13px;color:var(--md);margin-bottom:28px;line-height:1.6;}
+.fl{font-size:11px;font-family:var(--mono);color:var(--md);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;display:block;}
+.fiw{position:relative;margin-bottom:10px;}
+.fi{width:100%;background:var(--s2);border:1px solid var(--border-em);border-radius:var(--r);color:var(--hi);font-family:var(--mono);font-size:12px;padding:12px 44px 12px 14px;outline:none;transition:border-color .2s;letter-spacing:.04em;}
+.fi:focus{border-color:var(--accent);}
+.fi.err{border-color:var(--red);}
+.tv{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--md);cursor:pointer;font-size:15px;padding:4px;line-height:1;transition:color .15s;}
+.tv:hover{color:var(--hi);}
+.fh{font-size:11px;font-family:var(--mono);color:var(--lo);margin-bottom:24px;line-height:1.7;}
+.fh b{color:var(--md);}
+.lb{width:100%;background:linear-gradient(135deg,#2563eb,#7c3aed);border:none;border-radius:var(--r);color:#fff;font-family:var(--display);font-size:15px;font-weight:700;padding:13px;cursor:pointer;transition:opacity .15s,transform .1s;letter-spacing:.02em;}
+.lb:hover{opacity:.9;}.lb:active{transform:scale(.98);}.lb:disabled{opacity:.5;cursor:not-allowed;}
+.le{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);border-radius:var(--r);padding:10px 14px;font-size:12px;font-family:var(--mono);color:var(--red);margin-top:14px;line-height:1.7;display:none;}
+.le.show{display:block;}
+.ls2{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px;}
+
+/* APP */
+.app{display:none;flex-direction:column;min-height:100vh;}
+.app.visible{display:flex;}
+
+/* HEADER */
+.hd{position:sticky;top:0;z-index:20;background:rgba(8,10,15,.88);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border-bottom:1px solid var(--border);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.logo{display:flex;align-items:center;gap:12px;}
+.li{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;box-shadow:0 4px 16px rgba(37,99,235,.35);flex-shrink:0;}
+.lt{font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}
+.lsub{font-size:10px;font-family:var(--mono);color:var(--md);letter-spacing:.08em;}
+.hr{display:flex;align-items:center;gap:14px;}
+.pill{display:flex;align-items:center;gap:7px;font-size:11px;font-family:var(--mono);color:var(--green);background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:20px;padding:5px 12px;transition:all .3s;}
+.pill.off{color:var(--red);background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.2);}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.5s ease-in-out infinite;}
+.pill.off .dot{animation:none;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.clk{font-size:12px;font-family:var(--mono);color:var(--md);letter-spacing:.06em;}
+.dtag{font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.08em;text-transform:uppercase;}
+.out-btn{font-size:11px;font-family:var(--mono);color:var(--lo);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;letter-spacing:.06em;transition:color .15s,border-color .15s;}
+.out-btn:hover{color:var(--red);border-color:rgba(248,113,113,.3);}
+
+/* PROGRESS */
+.pr{height:1px;background:var(--border);overflow:hidden;}
+.pf{height:100%;width:0%;background:linear-gradient(90deg,#2563eb,#7c3aed);transition:width linear;box-shadow:0 0 8px rgba(124,58,237,.5);}
+
+/* MAIN */
+.mn{padding:24px 24px 32px;flex:1;position:relative;z-index:1;}
+.sb{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+.sc{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:8px 14px;}
+.scl{font-size:10px;font-family:var(--mono);color:var(--lo);text-transform:uppercase;letter-spacing:.08em;}
+.scv{font-size:16px;font-weight:700;letter-spacing:-.02em;}
+.dv{width:1px;height:30px;background:var(--border);flex-shrink:0;}
+.lu{margin-left:auto;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
+
+/* GRID */
+.gd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start;}
+@media(max-width:960px){.gd{grid-template-columns:1fr;}}
+
+/* CARD */
+.cd{background:var(--s1);border:1px solid var(--border);border-radius:var(--rxl);overflow:hidden;}
+.cdh{padding:18px 20px 14px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;}
+.cdh::before{content:'';position:absolute;top:-30px;right:-20px;width:80px;height:80px;border-radius:50%;background:var(--q-glow);filter:blur(28px);pointer-events:none;}
+.cht{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;}
+.qnw{display:flex;align-items:center;gap:10px;}
+.qem{width:36px;height:36px;border-radius:10px;background:var(--s2);border:1px solid var(--border-em);display:flex;align-items:center;justify-content:center;font-size:17px;}
+.qn{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+.qa{font-size:10px;font-family:var(--mono);color:var(--md);margin-top:1px;letter-spacing:.06em;}
+.qt{text-align:right;}
+.qnum{font-size:28px;font-weight:800;letter-spacing:-.04em;color:var(--q-cor);line-height:1;}
+.qlbl{font-size:9px;font-family:var(--mono);color:var(--lo);text-transform:uppercase;letter-spacing:.1em;}
+.qbt{height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
+.qbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .6s ease;}
+
+/* RANK */
+.rl{padding:6px 0;}
+.rr{display:flex;align-items:center;gap:10px;padding:10px 20px;position:relative;transition:background .15s;cursor:default;}
+.rr::after{content:'';position:absolute;inset:0;background:var(--q-cor);opacity:0;transition:opacity .15s;}
+.rr:hover::after{opacity:.04;}
+.rr.bump{animation:bump .7s ease forwards;}
+@keyframes bump{0%{background:transparent;}25%{background:rgba(255,255,255,.05);}100%{background:transparent;}}
+.p{font-size:11px;font-weight:500;font-family:var(--mono);width:24px;text-align:center;flex-shrink:0;color:var(--lo);}
+.p.p1{color:#fbbf24;font-size:15px;}.p.p2{color:#94a3b8;font-size:14px;}.p.p3{color:#b45309;font-size:13px;}
+.av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--border-em);background:var(--q-avbg);color:var(--q-cor);}
+.nc{flex:1;min-width:0;}
+.nf{font-size:13px;font-weight:600;}.nl{font-size:11px;color:var(--md);font-weight:400;}
+.stc{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.mbt{width:44px;height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
+.mbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .5s ease;}
+.cnt{font-size:14px;font-weight:700;font-family:var(--mono);min-width:20px;text-align:right;color:var(--q-cor);transition:color .3s;}
+.cnt.z{color:var(--lo);}
+.cdf{padding:10px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
+.fl2{color:var(--q-cor);font-weight:500;}
+
+/* FOOTER */
+.ft{border-top:1px solid var(--border);padding:14px 28px;display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;position:relative;z-index:1;}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--s2);border:1px solid rgba(248,113,113,.3);border-radius:var(--r);padding:12px 18px;font-size:12px;font-family:var(--mono);color:var(--red);max-width:340px;line-height:1.7;opacity:0;transform:translateY(12px);transition:opacity .3s,transform .3s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateY(0);}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<!-- ══════ TELA DE LOGIN ══════ -->
+<div class="lw" id="lw">
+  <div class="lc">
+    <div class="ll">
+      <div class="lli">B</div>
+      <div class="llt">
+        <div class="t">Ranking de Atendimentos</div>
+        <div class="s">Blip · Techmetria</div>
+      </div>
+    </div>
+
+    <div class="lh">Acesso ao painel</div>
+    <p class="ls">Cole sua chave de acesso do Blip abaixo.<br>Ela fica salva <strong>apenas neste navegador</strong> — nunca é enviada a nenhum servidor externo.</p>
+
+    <label class="fl" for="tkn">Chave de acesso (Authorization)</label>
+    <div class="fiw">
+      <input class="fi" id="tkn" type="password" placeholder="Key XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')fazerLogin()" />
+      <button class="tv" onclick="toggleVis()" title="Mostrar/ocultar">👁</button>
+    </div>
+
+    <p class="fh">
+      <b>Onde encontrar:</b> Blip Portal → seu bot → Configurações → Chaves de Acesso<br>
+      → <b>+ Nova chave</b> → copie o campo <b>Authorization</b> (começa com "Key ")
+    </p>
+
+    <button class="lb" id="lbtn" onclick="fazerLogin()">Entrar no painel</button>
+    <div class="le" id="lerr"></div>
+  </div>
+</div>
+
+<!-- ══════ APP ══════ -->
+<div class="app" id="app">
+  <header class="hd">
+    <div class="logo">
+      <div class="li">B</div>
+      <div>
+        <div class="lt">Ranking de Atendimentos</div>
+        <div class="lsub">Blip · Tempo Real</div>
+      </div>
+    </div>
+    <div class="hr">
+      <div class="dtag" id="dtag">—</div>
+      <div class="clk" id="clk">--:--:--</div>
+      <div class="pill" id="pill"><span class="dot"></span><span id="ptxt">conectando</span></div>
+      <button class="out-btn" onclick="fazerLogout()">⬡ sair</button>
+    </div>
+  </header>
+  <div class="pr"><div class="pf" id="pf"></div></div>
+
+  <main class="mn">
+    <div class="sb">
+      <div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">—</div></div>
+      <div class="dv"></div>
+      <div class="sc"><div class="scl">Gestão</div><div class="scv" id="sg" style="color:#60a5fa">—</div></div>
+      <div class="sc"><div class="scl">Comercial</div><div class="scv" id="sc2" style="color:#34d399">—</div></div>
+      <div class="sc"><div class="scl">Financeiro</div><div class="scv" id="sf" style="color:#fbbf24">—</div></div>
+      <div class="lu" id="lu">aguardando primeira atualização…</div>
+    </div>
+    <div class="gd" id="gd"></div>
+  </main>
+
+  <footer class="ft">
+    <span>Transferência direta excluída · ClosedAttendant · somente hoje</span>
+    <span id="fi2">atualização a cada — s</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const LS='blip_token_v1';
+const $=id=>document.getElementById(id);
+
+/* utilitários */
+function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});}
+function ini(n){return n.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase();}
+function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
+function i2n(id){if(!id)return'';let s=id.split('@')[0];try{s=decodeURIComponent(s);}catch(e){}return s.split('@')[0].replace(/\./g,' ').trim();}
+function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
+
+/* estado */
+let TOKEN='';
+const cnts={};
+Object.entries(CONFIG.filas).forEach(([f,c])=>{cnts[f]={};c.atendentes.forEach(a=>{cnts[f][a]=0;});});
+let prev={},ultima=null,ticker=null,progT=null;
+
+/* login */
+function toggleVis(){const i=$('tkn');i.type=i.type==='password'?'text':'password';}
+
+async function fazerLogin(){
+  const inp=$('tkn'),val=inp.value.trim(),err=$('lerr'),btn=$('lbtn');
+  if(!val||!val.startsWith('Key ')){
+    inp.classList.add('err');
+    err.textContent=!val?'Cole a chave antes de continuar.':'A chave deve começar com "Key " (com espaço).';
+    err.classList.add('show');return;
+  }
+  inp.classList.remove('err');err.classList.remove('show');
+  btn.disabled=true;btn.innerHTML='<span class="ls2"></span>Verificando…';
+  TOKEN=val;
+  try{
+    await buscar(true);
+    localStorage.setItem(LS,TOKEN);
+    abrirApp();
+  }catch(e){
+    TOKEN='';btn.disabled=false;btn.textContent='Entrar no painel';
+    inp.classList.add('err');
+    err.innerHTML=`<b>Falha ao conectar:</b> ${e.message}<br><br>Verifique se a chave está correta e tem permissão de Atendimento Humano.`;
+    err.classList.add('show');
+  }
+}
+
+function fazerLogout(){
+  localStorage.removeItem(LS);TOKEN='';
+  if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;
+  $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
+}
+
+function abrirApp(){
+  $('lw').classList.add('hidden');$('app').classList.add('visible');
+  $('fi2').textContent=`atualização a cada ${CONFIG.intervaloSegundos}s`;
+  iniciarCiclo();
+}
+
+/* auto-login */
+(()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
+
+/* api */
+function blipUrl(){return CONFIG.contractId?`https://${CONFIG.contractId}.http.msging.net/commands`:'https://http.msging.net/commands';}
+function buildUri(){
+  const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
+  const f=[`closeDate ge datetimeoffset'${ini2.toISOString()}'`,`closeDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
+  return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=0&$take=500&$orderby=closeDate asc`;
+}
+const PROXIES=[
+  u=>'https://corsproxy.io/?'+encodeURIComponent(u),
+  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
+  u=>'https://thingproxy.freeboard.io/fetch/'+u,
+];
+async function chamada(target,body,pfn){
+  const url=pfn?pfn(target):target;
+  const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  let d=await r.json();
+  if(d.contents)d=JSON.parse(d.contents);
+  if(d.status==='failure')throw new Error(d.reason?.description||'Blip failure');
+  return d;
+}
+async function buscar(teste=false){
+  const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:teste?'/tickets/history?$skip=0&$take=1':buildUri()};
+  const t=blipUrl();let le;
+  try{const d=await chamada(t,body);return d?.resource?.items||[];}catch(e){le=e;}
+  for(const p of PROXIES){try{const d=await chamada(t,body,p);return d?.resource?.items||[];}catch(e){le=e;console.warn('proxy falhou',e.message);}}
+  throw new Error(le?.message||'Falha em todos os proxies');
+}
+
+/* processamento */
+function processar(tickets){
+  Object.entries(CONFIG.filas).forEach(([f,c])=>c.atendentes.forEach(a=>{cnts[f][a]=0;}));
+  const ig=norm(CONFIG.filaIgnorar);
+  for(const t of tickets){
+    const fr=(t.team||'').trim();if(!fr||norm(fr)===ig)continue;
+    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));if(!fk)continue;
+    const an=i2n(t.agentIdentity||'');if(!an)continue;
+    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));if(!ak)continue;
+    cnts[fk][ak]++;
+  }
+}
+
+/* render */
+function render(){
+  const gd=$('gd');gd.innerHTML='';
+  let tot=0;const tots={};
+  Object.entries(CONFIG.filas).forEach(([fila,cfg])=>{
+    const ranked=cfg.atendentes.map(a=>({nome:a,count:cnts[fila][a]})).sort((a,b)=>b.count-a.count);
+    const total=ranked.reduce((s,r)=>s+r.count,0);tots[fila]=total;tot+=total;
+    const maxC=Math.max(...ranked.map(r=>r.count),1);
+    const lider=ranked.find(r=>r.count>0);
+    const maxT=Math.max(...Object.values(tots),1);
+    const card=document.createElement('div');
+    card.className='cd';
+    card.style.setProperty('--q-cor',cfg.cor);
+    card.style.setProperty('--q-glow',cfg.corGlow);
+    card.style.setProperty('--q-avbg',cfg.cor+'18');
+    card.innerHTML=`
+      <div class="cdh">
+        <div class="cht">
+          <div class="qnw"><div class="qem">${cfg.emoji}</div><div><div class="qn">${fila}</div><div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''}</div></div></div>
+          <div class="qt"><div class="qnum">${total}</div><div class="qlbl">hoje</div></div>
+        </div>
+        <div class="qbt"><div class="qbf" style="width:${Math.round((total/maxT)*100)}%"></div></div>
+      </div>
+      <div class="rl" id="rl-${fila.replace(/\s/g,'_')}"></div>
+      <div class="cdf">
+        <span>🏆 <span class="fl2">${lider?lider.nome.split(' ')[0]:'—'}</span></span>
+        <span>${ultima?fH(ultima):'—'}</span>
+      </div>`;
+    gd.appendChild(card);
+    const lista=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
+    ranked.forEach((ag,i)=>{
+      const pct=Math.round((ag.count/maxC)*100);
+      const old=prev[fila]?.[ag.nome]??-1;
+      const row=document.createElement('div');
+      row.className='rr'+(ag.count>0&&ag.count!==old?' bump':'');
+      const pl=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+      const pc=i===0?'p1':i===1?'p2':i===2?'p3':'';
+      const[pn,...rest]=ag.nome.split(' ');
+      row.innerHTML=`<div class="p ${pc}">${pl}</div><div class="av">${ini(ag.nome)}</div><div class="nc"><span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span></div><div class="stc"><div class="mbt"><div class="mbf" style="width:${ag.count>0?pct:0}%"></div></div><div class="cnt ${ag.count===0?'z':''}">${ag.count}</div></div>`;
+      lista.appendChild(row);
+    });
+  });
+  $('st').textContent=tot;
+  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{const el=$(id);if(el)el.textContent=tots[f]??0;});
+  if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
+  Object.entries(CONFIG.filas).forEach(([f,c])=>{prev[f]={...cnts[f]};});
+}
+
+/* barra progresso */
+function barra(){
+  if(progT)clearInterval(progT);
+  const fill=$('pf'),dur=CONFIG.intervaloSegundos*1000,start=Date.now();
+  fill.style.transition='none';fill.style.width='0%';
+  progT=setInterval(()=>{
+    const pct=Math.min(((Date.now()-start)/dur)*100,100);
+    fill.style.transition='width 0.4s linear';fill.style.width=pct+'%';
+    if(pct>=100)clearInterval(progT);
+  },400);
+}
+
+/* relógio */
+setInterval(()=>{$('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());},1000);
+$('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());
+
+/* toast */
+let tt;
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),5000);}
+
+/* ciclo */
+async function atualizar(){
+  try{
+    processar(await buscar());
+    ultima=new Date();render();
+    const p=$('pill');p.classList.remove('off');$('ptxt').textContent='ao vivo';
+    barra();
+  }catch(e){
+    console.error(e);
+    const p=$('pill');p.classList.add('off');$('ptxt').textContent='offline';
+    toast('⚠ Falha ao atualizar: '+e.message);
+  }
+}
+function iniciarCiclo(){atualizar();if(ticker)clearInterval(ticker);ticker=setInterval(atualizar,CONFIG.intervaloSegundos*1000);}
+</script>
+</body>
+</html>
