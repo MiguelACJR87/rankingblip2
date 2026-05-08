@@ -29,7 +29,7 @@ const CONFIG = {
     },
     "Comercial": {
       cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈",
-      atendentes: ["Cyntia Costa","Juliana Gomes"]
+      atendentes: ["Renatto Fagundes","Juliana Gomes"]
     },
     "Financeiro": {
       cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰",
@@ -131,67 +131,24 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .qbt{height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
 .qbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .6s ease;}
 
-/* RANK ROWS */
-.rl{padding:4px 0;}
-.rr{display:flex;align-items:center;gap:10px;padding:9px 16px;position:relative;transition:background .15s;cursor:default;border-radius:8px;margin:0 6px;}
-.rr:hover{background:var(--s2);}
-.rr.bump{animation:bump .8s ease forwards;}
-@keyframes bump{0%{background:transparent;}20%{background:rgba(52,211,153,.1);}100%{background:transparent;}}
-
-/* PRÓXIMO — destaque especial */
-.rr.proximo{
-  background:rgba(52,211,153,.07);
-  border:1px solid rgba(52,211,153,.25);
-  margin:4px 6px;
-}
-.rr.proximo .av{border-color:rgba(52,211,153,.5);box-shadow:0 0 10px rgba(52,211,153,.2);}
-
-/* ÚLTIMO — quem acabou de atender */
-.rr.ultimo{background:rgba(255,255,255,.03);}
-
-/* posição / indicador */
-.p{font-size:11px;font-weight:500;font-family:var(--mono);width:20px;text-align:center;flex-shrink:0;color:var(--lo);}
-.p.ult{color:var(--q-cor);font-size:13px;}
-
-/* avatar */
+/* RANK */
+.rl{padding:6px 0;}
+.rr{display:flex;align-items:center;gap:10px;padding:10px 20px;position:relative;transition:background .15s;cursor:default;}
+.rr::after{content:'';position:absolute;inset:0;background:var(--q-cor);opacity:0;transition:opacity .15s;}
+.rr:hover::after{opacity:.04;}
+.rr.bump{animation:bump .7s ease forwards;}
+@keyframes bump{0%{background:transparent;}25%{background:rgba(255,255,255,.05);}100%{background:transparent;}}
+.p{font-size:11px;font-weight:500;font-family:var(--mono);width:24px;text-align:center;flex-shrink:0;color:var(--lo);}
+.p.p1{color:#fbbf24;font-size:15px;}.p.p2{color:#94a3b8;font-size:14px;}.p.p3{color:#b45309;font-size:13px;}
 .av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--border-em);background:var(--q-avbg);color:var(--q-cor);}
-
-/* nome */
 .nc{flex:1;min-width:0;}
-.nf{font-size:13px;font-weight:600;}
-.nl{font-size:11px;color:var(--md);font-weight:400;}
-
-/* coluna direita */
-.stc{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;}
-.ag-time{font-size:11px;font-family:var(--mono);color:var(--q-cor);font-weight:500;}
-.ag-time.none{color:var(--lo);}
-.ag-cnt{font-size:10px;font-family:var(--mono);color:var(--lo);}
-
-/* badge PRÓXIMO */
-.badge-prox{
-  display:inline-flex;align-items:center;gap:4px;
-  font-size:9px;font-family:var(--mono);font-weight:600;
-  letter-spacing:.08em;text-transform:uppercase;
-  color:var(--green);
-  background:rgba(52,211,153,.12);
-  border:1px solid rgba(52,211,153,.3);
-  border-radius:4px;padding:2px 6px;
-  animation:glow-pulse 2s ease-in-out infinite;
-}
-@keyframes glow-pulse{0%,100%{box-shadow:0 0 0 rgba(52,211,153,0);}50%{box-shadow:0 0 8px rgba(52,211,153,.3);}}
-
-/* badge ÚLTIMO */
-.badge-ult{
-  font-size:9px;font-family:var(--mono);
-  color:var(--q-cor);
-  background:var(--q-cor-a);
-  border:1px solid var(--q-cor-b);
-  border-radius:4px;padding:2px 6px;
-  letter-spacing:.06em;text-transform:uppercase;
-}
-
-/* footer do card */
-.cdf{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
+.nf{font-size:13px;font-weight:600;}.nl{font-size:11px;color:var(--md);font-weight:400;}
+.stc{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.mbt{width:44px;height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
+.mbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .5s ease;}
+.cnt{font-size:14px;font-weight:700;font-family:var(--mono);min-width:20px;text-align:right;color:var(--q-cor);transition:color .3s;}
+.cnt.z{color:var(--lo);}
+.cdf{padding:10px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 .fl2{color:var(--q-cor);font-weight:500;}
 
 /* FOOTER */
@@ -288,13 +245,9 @@ function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric'
 
 /* estado */
 let TOKEN='';
-// agentes[fila][nome] = { count, lastTime (Date|null) }
-const agentes={};
-Object.entries(CONFIG.filas).forEach(([f,c])=>{
-  agentes[f]={};
-  c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};});
-});
-let prevAgentes={},ultima=null,ticker=null,progT=null;
+const cnts={};
+Object.entries(CONFIG.filas).forEach(([f,c])=>{cnts[f]={};c.atendentes.forEach(a=>{cnts[f][a]=0;});});
+let prev={},ultima=null,ticker=null,progT=null;
 
 /* login */
 function toggleVis(){const i=$('tkn');i.type=i.type==='password'?'text':'password';}
@@ -378,156 +331,63 @@ async function buscar(teste=false){
 
 /* processamento */
 function processar(tickets){
-  // Zera
-  Object.entries(CONFIG.filas).forEach(([f,c])=>
-    c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};}));
+  Object.entries(CONFIG.filas).forEach(([f,c])=>c.atendentes.forEach(a=>{cnts[f][a]=0;}));
   const ig=norm(CONFIG.filaIgnorar);
   for(const t of tickets){
-    const fr=(t.team||'').trim();
-    if(!fr||norm(fr)===ig) continue;
-    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));
-    if(!fk) continue;
-    const an=i2n(t.agentIdentity||'');
-    if(!an) continue;
-    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
-    if(!ak) continue;
-    // Incrementa contagem
-    agentes[fk][ak].count++;
-    // Registra o horário mais recente de atendimento
-    const ts=t.storageDate||t.closeDate||null;
-    if(ts){
-      const dt=new Date(ts);
-      if(!agentes[fk][ak].lastTime || dt > agentes[fk][ak].lastTime){
-        agentes[fk][ak].lastTime=dt;
-      }
-    }
+    const fr=(t.team||'').trim();if(!fr||norm(fr)===ig)continue;
+    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));if(!fk)continue;
+    const an=i2n(t.agentIdentity||'');if(!an)continue;
+    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));if(!ak)continue;
+    cnts[fk][ak]++;
   }
 }
 
 /* render */
-function fHM(d){ // formata HH:MM
-  if(!d) return null;
-  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-}
-
 function render(){
   const gd=$('gd');gd.innerHTML='';
   let tot=0;const tots={};
-
   Object.entries(CONFIG.filas).forEach(([fila,cfg])=>{
-    // Monta lista de agentes com dados
-    const lista_ag=cfg.atendentes.map(a=>({
-      nome:a,
-      count:agentes[fila][a].count,
-      lastTime:agentes[fila][a].lastTime
-    }));
-
-    // Ordena: quem atendeu mais recentemente primeiro; sem atendimento vai pro final
-    const ordenados=[...lista_ag].sort((a,b)=>{
-      if(!a.lastTime && !b.lastTime) return 0;
-      if(!a.lastTime) return 1;   // sem atendimento → fim
-      if(!b.lastTime) return -1;
-      return b.lastTime - a.lastTime; // mais recente primeiro
-    });
-
-    // PRÓXIMO = último da lista (quem está há mais tempo sem atender ou não atendeu)
-    const proximo=ordenados[ordenados.length-1];
-    // ÚLTIMO = primeiro da lista (quem atendeu mais recentemente)
-    const ultimo_ag=ordenados.find(a=>a.lastTime);
-
-    const total=lista_ag.reduce((s,r)=>s+r.count,0);
-    tots[fila]=total;tot+=total;
+    const ranked=cfg.atendentes.map(a=>({nome:a,count:cnts[fila][a]})).sort((a,b)=>b.count-a.count);
+    const total=ranked.reduce((s,r)=>s+r.count,0);tots[fila]=total;tot+=total;
+    const maxC=Math.max(...ranked.map(r=>r.count),1);
+    const lider=ranked.find(r=>r.count>0);
     const maxT=Math.max(...Object.values(tots),1);
-
     const card=document.createElement('div');
     card.className='cd';
     card.style.setProperty('--q-cor',cfg.cor);
     card.style.setProperty('--q-glow',cfg.corGlow);
     card.style.setProperty('--q-avbg',cfg.cor+'18');
-    card.style.setProperty('--q-cor-a',cfg.cor+'15');
-    card.style.setProperty('--q-cor-b',cfg.cor+'40');
-
     card.innerHTML=`
       <div class="cdh">
         <div class="cht">
-          <div class="qnw">
-            <div class="qem">${cfg.emoji}</div>
-            <div>
-              <div class="qn">${fila}</div>
-              <div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''} · ${total} hoje</div>
-            </div>
-          </div>
-          <div class="qt">
-            <div class="qnum">${proximo?proximo.nome.split(' ')[0]:'—'}</div>
-            <div class="qlbl">próximo</div>
-          </div>
+          <div class="qnw"><div class="qem">${cfg.emoji}</div><div><div class="qn">${fila}</div><div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''}</div></div></div>
+          <div class="qt"><div class="qnum">${total}</div><div class="qlbl">hoje</div></div>
         </div>
         <div class="qbt"><div class="qbf" style="width:${Math.round((total/maxT)*100)}%"></div></div>
       </div>
       <div class="rl" id="rl-${fila.replace(/\s/g,'_')}"></div>
       <div class="cdf">
-        <span>⏱ último: <span class="fl2">${ultimo_ag?ultimo_ag.nome.split(' ')[0]+' às '+fHM(ultimo_ag.lastTime):'nenhum hoje'}</span></span>
+        <span>🏆 <span class="fl2">${lider?lider.nome.split(' ')[0]:'—'}</span></span>
         <span>${ultima?fH(ultima):'—'}</span>
       </div>`;
     gd.appendChild(card);
-
-    const lista_el=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
-
-    ordenados.forEach((ag,i)=>{
-      const isProximo = ag.nome===proximo?.nome;
-      const isUltimo  = ag.nome===ultimo_ag?.nome && ag.lastTime;
-      const prevLast  = prevAgentes[fila]?.[ag.nome]?.lastTime;
-      const bumped    = ag.lastTime && (!prevLast || ag.lastTime > prevLast);
-
+    const lista=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
+    ranked.forEach((ag,i)=>{
+      const pct=Math.round((ag.count/maxC)*100);
+      const old=prev[fila]?.[ag.nome]??-1;
       const row=document.createElement('div');
-      let rowClass='rr';
-      if(isProximo) rowClass+=' proximo';
-      else if(isUltimo) rowClass+=' ultimo';
-      if(bumped) rowClass+=' bump';
-      row.className=rowClass;
-
-      const [pn,...rest]=ag.nome.split(' ');
-      const posIcon = isProximo
-        ? '<span class="badge-prox">▶ próximo</span>'
-        : isUltimo
-          ? '<span class="badge-ult">último</span>'
-          : `<span class="p">#${i+1}</span>`;
-
-      const timeStr = ag.lastTime ? fHM(ag.lastTime) : 'não atendeu';
-      const timeClass = ag.lastTime ? 'ag-time' : 'ag-time none';
-
-      row.innerHTML=`
-        <div style="width:70px;flex-shrink:0;display:flex;align-items:center;">${posIcon}</div>
-        <div class="av">${ini(ag.nome)}</div>
-        <div class="nc">
-          <span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span>
-        </div>
-        <div class="stc">
-          <span class="${timeClass}">${timeStr}</span>
-          <span class="ag-cnt">${ag.count} atend.</span>
-        </div>`;
-      lista_el.appendChild(row);
+      row.className='rr'+(ag.count>0&&ag.count!==old?' bump':'');
+      const pl=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+      const pc=i===0?'p1':i===1?'p2':i===2?'p3':'';
+      const[pn,...rest]=ag.nome.split(' ');
+      row.innerHTML=`<div class="p ${pc}">${pl}</div><div class="av">${ini(ag.nome)}</div><div class="nc"><span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span></div><div class="stc"><div class="mbt"><div class="mbf" style="width:${ag.count>0?pct:0}%"></div></div><div class="cnt ${ag.count===0?'z':''}">${ag.count}</div></div>`;
+      lista.appendChild(row);
     });
   });
-
   $('st').textContent=tot;
-  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{
-    const el=$(id);if(el)el.textContent=tots[f]??0;
-  });
+  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{const el=$(id);if(el)el.textContent=tots[f]??0;});
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
-
-  // snapshot para detectar mudanças
-  Object.entries(CONFIG.filas).forEach(([f])=>{
-    prevAgentes[f]={};
-    cfg.atendentes?.forEach(a=>{
-      prevAgentes[f][a]={...agentes[f][a]};
-    });
-  });
-  // fix: iterar corretamente
-  Object.entries(CONFIG.filas).forEach(([f,c])=>{
-    prevAgentes[f]={};
-    c.atendentes.forEach(a=>{prevAgentes[f][a]={...agentes[f][a]};});
-  });
+  Object.entries(CONFIG.filas).forEach(([f,c])=>{prev[f]={...cnts[f]};});
 }
 
 /* barra progresso */
@@ -554,8 +414,7 @@ function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show')
 async function atualizar(){
   try{
     processar(await buscar());
-    ultima=new Date();
-    render();
+    ultima=new Date();render();
     const p=$('pill');p.classList.remove('off');$('ptxt').textContent='ao vivo';
     barra();
   }catch(e){
