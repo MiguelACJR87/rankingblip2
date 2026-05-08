@@ -306,9 +306,27 @@ async function chamadaWorker(body){
   return d;
 }
 async function buscar(teste=false){
-  const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:buildUri(teste)};
-  const d=await chamadaWorker(body);
-  return d?.resource?.items||[];
+  if(teste){
+    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets?$closed=true&$skip=0&$take=1'};
+    const d=await chamadaWorker(body);
+    return d?.resource?.items||[];
+  }
+  // Blip limita $take=100 — busca todas as páginas
+  const PAGE=100;
+  let skip=0, todos=[], continua=true;
+  while(continua){
+    const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
+    const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
+    const uri='/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip='+skip+'&$take='+PAGE;
+    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri};
+    const d=await chamadaWorker(body);
+    const items=d?.resource?.items||[];
+    todos=todos.concat(items);
+    if(items.length<PAGE) continua=false; // última página
+    else skip+=PAGE;
+    if(skip>2000) break; // segurança: máximo 2000 tickets por dia
+  }
+  return todos;
 }
 
 /* processamento */
