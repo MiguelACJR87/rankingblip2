@@ -294,7 +294,17 @@ function buildUri(){
   const f=[`closeDate ge datetimeoffset'${ini2.toISOString()}'`,`closeDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
   return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=0&$take=500&$orderby=closeDate asc`;
 }
-const PROXIES=[
+/* ─────────────────────────────────────────────────────────────
+   WORKER URL — cole aqui a URL do seu Cloudflare Worker após o deploy
+   Ex: 'https://blip-proxy.seunome.workers.dev'
+   Deixe em branco ('') para pular e usar os proxies públicos de fallback.
+───────────────────────────────────────────────────────────── */
+const WORKER_URL = 'https://throbbing-truth-21fb.gestao-02.workers.dev';
+
+const PROXIES = [
+  /* 1º — Worker dedicado (encaminha Authorization sem bloqueio) */
+  ...(WORKER_URL ? [u => `${WORKER_URL}?url=${encodeURIComponent(u)}`] : []),
+  /* Fallbacks públicos (podem falhar com Authorization) */
   u=>'https://corsproxy.io/?'+encodeURIComponent(u),
   u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
   u=>'https://thingproxy.freeboard.io/fetch/'+u,
