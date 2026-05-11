@@ -16,14 +16,25 @@
 ═════════════════════════════════════════════════════ -->
 <script>
 const CONFIG = {
+  // Cole aqui a URL do Cloudflare Worker após instalar o worker.js
+  workerUrl:         "https://snowy-boat-7e2a.gestao-02.workers.dev/",
   contractId:        "techmetria1",
   intervaloSegundos: 20,
   filaIgnorar:       "Transferência direta",
-  /* atendentes são carregados automaticamente da API do Blip */
   filas: {
-    "Gestão":    { cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)",  emoji: "🏢" },
-    "Comercial": { cor: "#34d399", corGlow: "rgba(52,211,153,0.25)",  emoji: "📈" },
-    "Financeiro":{ cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)",  emoji: "💰" }
+    "Gestão": {
+      cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢",
+      atendentes: ["Miguel Carvalho","Matheus Muniz","Sara Santana",
+                   "Nadiel Coutinho","Nathalia Gomes","Lucas França","Mirella Santos"]
+    },
+    "Comercial": {
+      cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈",
+      atendentes: ["Renatto Fagundes","Juliana Gomes"]
+    },
+    "Financeiro": {
+      cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰",
+      atendentes: ["Nitiele Silva","Gresy Vivian","Camila Patrício","Abraão Nunes"]
+    }
   }
 };
 </script>
@@ -120,24 +131,67 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .qbt{height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
 .qbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .6s ease;}
 
-/* RANK */
-.rl{padding:6px 0;}
-.rr{display:flex;align-items:center;gap:10px;padding:10px 20px;position:relative;transition:background .15s;cursor:default;}
-.rr::after{content:'';position:absolute;inset:0;background:var(--q-cor);opacity:0;transition:opacity .15s;}
-.rr:hover::after{opacity:.04;}
-.rr.bump{animation:bump .7s ease forwards;}
-@keyframes bump{0%{background:transparent;}25%{background:rgba(255,255,255,.05);}100%{background:transparent;}}
-.p{font-size:11px;font-weight:500;font-family:var(--mono);width:24px;text-align:center;flex-shrink:0;color:var(--lo);}
-.p.p1{color:#fbbf24;font-size:15px;}.p.p2{color:#94a3b8;font-size:14px;}.p.p3{color:#b45309;font-size:13px;}
+/* RANK ROWS */
+.rl{padding:4px 0;}
+.rr{display:flex;align-items:center;gap:10px;padding:9px 16px;position:relative;transition:background .15s;cursor:default;border-radius:8px;margin:0 6px;}
+.rr:hover{background:var(--s2);}
+.rr.bump{animation:bump .8s ease forwards;}
+@keyframes bump{0%{background:transparent;}20%{background:rgba(52,211,153,.1);}100%{background:transparent;}}
+
+/* PRÓXIMO — destaque especial */
+.rr.proximo{
+  background:rgba(52,211,153,.07);
+  border:1px solid rgba(52,211,153,.25);
+  margin:4px 6px;
+}
+.rr.proximo .av{border-color:rgba(52,211,153,.5);box-shadow:0 0 10px rgba(52,211,153,.2);}
+
+/* ÚLTIMO — quem acabou de atender */
+.rr.ultimo{background:rgba(255,255,255,.03);}
+
+/* posição / indicador */
+.p{font-size:11px;font-weight:500;font-family:var(--mono);width:20px;text-align:center;flex-shrink:0;color:var(--lo);}
+.p.ult{color:var(--q-cor);font-size:13px;}
+
+/* avatar */
 .av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--border-em);background:var(--q-avbg);color:var(--q-cor);}
+
+/* nome */
 .nc{flex:1;min-width:0;}
-.nf{font-size:13px;font-weight:600;}.nl{font-size:11px;color:var(--md);font-weight:400;}
-.stc{display:flex;align-items:center;gap:8px;flex-shrink:0;}
-.mbt{width:44px;height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
-.mbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .5s ease;}
-.cnt{font-size:14px;font-weight:700;font-family:var(--mono);min-width:20px;text-align:right;color:var(--q-cor);transition:color .3s;}
-.cnt.z{color:var(--lo);}
-.cdf{padding:10px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
+.nf{font-size:13px;font-weight:600;}
+.nl{font-size:11px;color:var(--md);font-weight:400;}
+
+/* coluna direita */
+.stc{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;}
+.ag-time{font-size:11px;font-family:var(--mono);color:var(--q-cor);font-weight:500;}
+.ag-time.none{color:var(--lo);}
+.ag-cnt{font-size:10px;font-family:var(--mono);color:var(--lo);}
+
+/* badge PRÓXIMO */
+.badge-prox{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:9px;font-family:var(--mono);font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--green);
+  background:rgba(52,211,153,.12);
+  border:1px solid rgba(52,211,153,.3);
+  border-radius:4px;padding:2px 6px;
+  animation:glow-pulse 2s ease-in-out infinite;
+}
+@keyframes glow-pulse{0%,100%{box-shadow:0 0 0 rgba(52,211,153,0);}50%{box-shadow:0 0 8px rgba(52,211,153,.3);}}
+
+/* badge ÚLTIMO */
+.badge-ult{
+  font-size:9px;font-family:var(--mono);
+  color:var(--q-cor);
+  background:var(--q-cor-a);
+  border:1px solid var(--q-cor-b);
+  border-radius:4px;padding:2px 6px;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+
+/* footer do card */
+.cdf{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 .fl2{color:var(--q-cor);font-weight:500;}
 
 /* FOOTER */
@@ -234,9 +288,13 @@ function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric'
 
 /* estado */
 let TOKEN='';
-const cnts={};
-Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
-let prev={},ultima=null,ticker=null,progT=null;
+// agentes[fila][nome] = { count, lastTime (Date|null) }
+const agentes={};
+Object.entries(CONFIG.filas).forEach(([f,c])=>{
+  agentes[f]={};
+  c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};});
+});
+let prevAgentes={},ultima=null,ticker=null,progT=null;
 
 /* login */
 function toggleVis(){const i=$('tkn');i.type=i.type==='password'?'text':'password';}
@@ -279,122 +337,197 @@ function abrirApp(){
 (()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
 
 /* api */
-function blipUrl(){return CONFIG.contractId?`https://${CONFIG.contractId}.http.msging.net/commands`:'https://http.msging.net/commands';}
-function buildUri(skip=0){
+function buildUri(teste){
+  if(teste) return '/tickets?$closed=true&$skip=0&$take=1';
   const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
-  const f=[`closedDate ge datetimeoffset'${ini2.toISOString()}'`,`closedDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
-  return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=${skip}&$take=100&$orderby=closedDate asc`;
+  const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
+  return '/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip=0&$take=500';
 }
-/* ─────────────────────────────────────────────────────────────
-   WORKER URL — cole aqui a URL do seu Cloudflare Worker após o deploy
-   Ex: 'https://blip-proxy.seunome.workers.dev'
-   Deixe em branco ('') para pular e usar os proxies públicos de fallback.
-───────────────────────────────────────────────────────────── */
-const WORKER_URL = 'https://throbbing-truth-21fb.gestao-02.workers.dev';
-
-const PROXIES = [
-  /* 1º — Worker dedicado (encaminha Authorization sem bloqueio) */
-  ...(WORKER_URL ? [u => `${WORKER_URL}?url=${encodeURIComponent(u)}`] : []),
-  /* Fallbacks públicos (podem falhar com Authorization) */
-  u=>'https://corsproxy.io/?'+encodeURIComponent(u),
-  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
-  u=>'https://thingproxy.freeboard.io/fetch/'+u,
-];
-async function chamada(target,body,pfn){
-  const url=pfn?pfn(target):target;
-  const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!r.ok){let et='';try{const ej=await r.clone().json();et=ej?.reason?.description||ej?.message||'';}catch(e){et=await r.text().catch(()=>'');}throw new Error(`HTTP ${r.status}${et?' — '+et:''}`);}
-  let d=await r.json();
-  if(d.contents)d=JSON.parse(d.contents);
-  if(d.status==='failure')throw new Error('Blip: '+(d.reason?.description||d.reason?.code||JSON.stringify(d.reason)||'failure'));
+async function chamadaWorker(body){
+  const wu=(CONFIG.workerUrl||'').trim();
+  if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no index.html (veja instruções)');
+  const r=await fetch(wu,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Contract-Id':CONFIG.contractId||''},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('Worker HTTP '+r.status);
+  const d=await r.json();
+  if(d?.status==='failure') throw new Error(d.reason?.description||'Blip: failure');
   return d;
-}
-async function chamarBlip(bodyFn){
-  const t=blipUrl();let le;
-  const body=bodyFn();
-  try{return await chamada(t,body);}catch(e){le=e;}
-  for(const p of PROXIES){try{return await chamada(t,bodyFn(),p);}catch(e){le=e;console.warn('proxy falhou',e.message);}}
-  throw new Error(le?.message||'Falha em todos os proxies');
 }
 async function buscar(teste=false){
   if(teste){
-    const d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets/history?$skip=0&$take=1'}));
+    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets?$closed=true&$skip=0&$take=1'};
+    const d=await chamadaWorker(body);
     return d?.resource?.items||[];
   }
-  const todos=[];let skip=0;
-  while(true){
-    const s=skip;
-    const d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:buildUri(s)}));
+  // Blip limita $take=100 — busca todas as páginas
+  const PAGE=100;
+  let skip=0, todos=[], continua=true;
+  while(continua){
+    const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
+    const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
+    const uri='/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip='+skip+'&$take='+PAGE;
+    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri};
+    const d=await chamadaWorker(body);
     const items=d?.resource?.items||[];
-    todos.push(...items);
-    if(items.length<100)break;
-    skip+=100;
+    todos=todos.concat(items);
+    if(items.length<PAGE) continua=false; // última página
+    else skip+=PAGE;
+    if(skip>2000) break; // segurança: máximo 2000 tickets por dia
   }
   return todos;
 }
 
-/* processamento — operadores descobertos dinamicamente pelos tickets */
+/* processamento */
 function processar(tickets){
-  /* reconstrói a lista de atendentes a partir dos tickets de hoje */
-  Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
+  // Zera
+  Object.entries(CONFIG.filas).forEach(([f,c])=>
+    c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};}));
   const ig=norm(CONFIG.filaIgnorar);
   for(const t of tickets){
-    const fr=(t.team||'').trim();if(!fr||norm(fr)===ig)continue;
-    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));if(!fk)continue;
-    const an=(t.agentName||i2n(t.agentIdentity||'')).trim();if(!an)continue;
-    /* normaliza para evitar duplicatas com grafia diferente */
-    let ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
-    if(!ak){CONFIG.filas[fk].atendentes.push(an);cnts[fk][an]=0;ak=an;}
-    cnts[fk][ak]++;
+    const fr=(t.team||'').trim();
+    if(!fr||norm(fr)===ig) continue;
+    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));
+    if(!fk) continue;
+    const an=i2n(t.agentIdentity||'');
+    if(!an) continue;
+    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
+    if(!ak) continue;
+    // Incrementa contagem
+    agentes[fk][ak].count++;
+    // Registra o horário mais recente de atendimento
+    const ts=t.storageDate||t.closeDate||null;
+    if(ts){
+      const dt=new Date(ts);
+      if(!agentes[fk][ak].lastTime || dt > agentes[fk][ak].lastTime){
+        agentes[fk][ak].lastTime=dt;
+      }
+    }
   }
 }
 
 /* render */
+function fHM(d){ // formata HH:MM
+  if(!d) return null;
+  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
 function render(){
   const gd=$('gd');gd.innerHTML='';
   let tot=0;const tots={};
+
   Object.entries(CONFIG.filas).forEach(([fila,cfg])=>{
-    const ranked=cfg.atendentes.map(a=>({nome:a,count:cnts[fila][a]})).sort((a,b)=>b.count-a.count);
-    const total=ranked.reduce((s,r)=>s+r.count,0);tots[fila]=total;tot+=total;
-    const maxC=Math.max(...ranked.map(r=>r.count),1);
-    const lider=ranked.find(r=>r.count>0);
+    // Monta lista de agentes com dados
+    const lista_ag=cfg.atendentes.map(a=>({
+      nome:a,
+      count:agentes[fila][a].count,
+      lastTime:agentes[fila][a].lastTime
+    }));
+
+    // Ordena: quem atendeu mais recentemente primeiro; sem atendimento vai pro final
+    const ordenados=[...lista_ag].sort((a,b)=>{
+      if(!a.lastTime && !b.lastTime) return 0;
+      if(!a.lastTime) return 1;   // sem atendimento → fim
+      if(!b.lastTime) return -1;
+      return b.lastTime - a.lastTime; // mais recente primeiro
+    });
+
+    // PRÓXIMO = último da lista (quem está há mais tempo sem atender ou não atendeu)
+    const proximo=ordenados[ordenados.length-1];
+    // ÚLTIMO = primeiro da lista (quem atendeu mais recentemente)
+    const ultimo_ag=ordenados.find(a=>a.lastTime);
+
+    const total=lista_ag.reduce((s,r)=>s+r.count,0);
+    tots[fila]=total;tot+=total;
     const maxT=Math.max(...Object.values(tots),1);
+
     const card=document.createElement('div');
     card.className='cd';
     card.style.setProperty('--q-cor',cfg.cor);
     card.style.setProperty('--q-glow',cfg.corGlow);
     card.style.setProperty('--q-avbg',cfg.cor+'18');
+    card.style.setProperty('--q-cor-a',cfg.cor+'15');
+    card.style.setProperty('--q-cor-b',cfg.cor+'40');
+
     card.innerHTML=`
       <div class="cdh">
         <div class="cht">
-          <div class="qnw"><div class="qem">${cfg.emoji}</div><div><div class="qn">${fila}</div><div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''}</div></div></div>
-          <div class="qt"><div class="qnum">${total}</div><div class="qlbl">hoje</div></div>
+          <div class="qnw">
+            <div class="qem">${cfg.emoji}</div>
+            <div>
+              <div class="qn">${fila}</div>
+              <div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''} · ${total} hoje</div>
+            </div>
+          </div>
+          <div class="qt">
+            <div class="qnum">${proximo?proximo.nome.split(' ')[0]:'—'}</div>
+            <div class="qlbl">próximo</div>
+          </div>
         </div>
         <div class="qbt"><div class="qbf" style="width:${Math.round((total/maxT)*100)}%"></div></div>
       </div>
       <div class="rl" id="rl-${fila.replace(/\s/g,'_')}"></div>
       <div class="cdf">
-        <span>🏆 <span class="fl2">${lider?lider.nome.split(' ')[0]:'—'}</span></span>
+        <span>⏱ último: <span class="fl2">${ultimo_ag?ultimo_ag.nome.split(' ')[0]+' às '+fHM(ultimo_ag.lastTime):'nenhum hoje'}</span></span>
         <span>${ultima?fH(ultima):'—'}</span>
       </div>`;
     gd.appendChild(card);
-    const lista=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
-    ranked.forEach((ag,i)=>{
-      const pct=Math.round((ag.count/maxC)*100);
-      const old=prev[fila]?.[ag.nome]??-1;
+
+    const lista_el=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
+
+    ordenados.forEach((ag,i)=>{
+      const isProximo = ag.nome===proximo?.nome;
+      const isUltimo  = ag.nome===ultimo_ag?.nome && ag.lastTime;
+      const prevLast  = prevAgentes[fila]?.[ag.nome]?.lastTime;
+      const bumped    = ag.lastTime && (!prevLast || ag.lastTime > prevLast);
+
       const row=document.createElement('div');
-      row.className='rr'+(ag.count>0&&ag.count!==old?' bump':'');
-      const pl=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
-      const pc=i===0?'p1':i===1?'p2':i===2?'p3':'';
-      const[pn,...rest]=ag.nome.split(' ');
-      row.innerHTML=`<div class="p ${pc}">${pl}</div><div class="av">${ini(ag.nome)}</div><div class="nc"><span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span></div><div class="stc"><div class="mbt"><div class="mbf" style="width:${ag.count>0?pct:0}%"></div></div><div class="cnt ${ag.count===0?'z':''}">${ag.count}</div></div>`;
-      lista.appendChild(row);
+      let rowClass='rr';
+      if(isProximo) rowClass+=' proximo';
+      else if(isUltimo) rowClass+=' ultimo';
+      if(bumped) rowClass+=' bump';
+      row.className=rowClass;
+
+      const [pn,...rest]=ag.nome.split(' ');
+      const posIcon = isProximo
+        ? '<span class="badge-prox">▶ próximo</span>'
+        : isUltimo
+          ? '<span class="badge-ult">último</span>'
+          : `<span class="p">#${i+1}</span>`;
+
+      const timeStr = ag.lastTime ? fHM(ag.lastTime) : 'não atendeu';
+      const timeClass = ag.lastTime ? 'ag-time' : 'ag-time none';
+
+      row.innerHTML=`
+        <div style="width:70px;flex-shrink:0;display:flex;align-items:center;">${posIcon}</div>
+        <div class="av">${ini(ag.nome)}</div>
+        <div class="nc">
+          <span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span>
+        </div>
+        <div class="stc">
+          <span class="${timeClass}">${timeStr}</span>
+          <span class="ag-cnt">${ag.count} atend.</span>
+        </div>`;
+      lista_el.appendChild(row);
     });
   });
+
   $('st').textContent=tot;
-  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{const el=$(id);if(el)el.textContent=tots[f]??0;});
+  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{
+    const el=$(id);if(el)el.textContent=tots[f]??0;
+  });
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
-  Object.entries(CONFIG.filas).forEach(([f,c])=>{prev[f]={...cnts[f]};});
+
+  // snapshot para detectar mudanças
+  Object.entries(CONFIG.filas).forEach(([f])=>{
+    prevAgentes[f]={};
+    cfg.atendentes?.forEach(a=>{
+      prevAgentes[f][a]={...agentes[f][a]};
+    });
+  });
+  // fix: iterar corretamente
+  Object.entries(CONFIG.filas).forEach(([f,c])=>{
+    prevAgentes[f]={};
+    c.atendentes.forEach(a=>{prevAgentes[f][a]={...agentes[f][a]};});
+  });
 }
 
 /* barra progresso */
@@ -421,7 +554,8 @@ function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show')
 async function atualizar(){
   try{
     processar(await buscar());
-    ultima=new Date();render();
+    ultima=new Date();
+    render();
     const p=$('pill');p.classList.remove('off');$('ptxt').textContent='ao vivo';
     barra();
   }catch(e){
