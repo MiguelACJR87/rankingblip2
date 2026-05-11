@@ -16,21 +16,28 @@ const CONFIG = {
   contractId:        "techmetria1",
   intervaloSegundos: 20,
   
-  // Filas que o painel deve fingir que não existem
+  // Filas que não devem aparecer no painel
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
 
   // ──────────────────────────────────────────────────
   // DE-PARA DE ATENDENTES
-  // Como a API só traz o login (ex: "gestao_01"), 
-  // coloque o login exato à esquerda e o Nome à direita.
+  // O código procurará o e-mail exato e exibirá o nome.
   // ──────────────────────────────────────────────────
   nomesAtendentes: {
-    "gestao.01": "Miguel Carvalho",
-    "gestao.02": "Matheus Muniz",
-    "gestao.03": "Sara Santana",
-    "financeiro.01": "Nitiele Silva",
-    "comercial.01": "Renatto Fagundes"
-    // Adicione os demais logins reais que aparecem na sua API aqui...
+    "gestao.01@techmetria.com.br": "Matheus Muniz",
+    "gestao.02@techmetria.com.br": "Miguel Carvalho",
+    "gestao.03@techmetria.com.br": "Nadiel Coutinho",
+    "gestao.04@techmetria.com.br": "Lucas França",
+    "gestao.05@techmetria.com.br": "Mirella Santos",
+    "gestao.07@techmetria.com.br": "Sara Santana",
+    "gestao.08@techmetria.com.br": "Nathalia Gomes",
+    "consumo@techmetria.com.br": "Diego Moura",
+    "comercial@techmetria.com.br": "Juliana Gomes",
+    "renatto.fagundes@techmetria.com": "Cyntia Costa",
+    "adm.01@techmetria.com.br": "Nitiele Silva",
+    "adm.02@techmetria.com.br": "Camila Patrício",
+    "adm.03@techmetria.com.br": "Gresy Vivian",
+    "adm.05@techmetria.com.br": "Abraão Nunes"
   }
 };
 </script>
@@ -253,7 +260,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </main>
 
   <footer class="ft">
-    <span>Filas dinâmicas · Transferência direta excluída · Somente hoje</span>
+    <span>Filas dinâmicas · Transferências excluídas · Somente hoje</span>
     <span id="fi2">atualização a cada — s</span>
   </footer>
 </div>
@@ -269,19 +276,24 @@ function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>
 function ini(n){return n.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase();}
 function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 
-// EXTROU O NOME DO AGENTE
+// ESTA É A FUNÇÃO QUE LÊ O E-MAIL DO BLIP E TRADUZ PARA O NOME REAL
 function i2n(id){
   if(!id) return '';
-  let s = id.split('@')[0];
+  
+  let s = id;
   try { s = decodeURIComponent(s); } catch(e){}
   
-  // 1. Verifica no "Dicionário" (De-Para) do CONFIG
+  // Limpa os sufixos padrão que a API do Blip insere (para extrair apenas o e-mail real)
+  s = s.replace('@desk.msging.net', '').replace('@blip.ai', '').trim();
+  
+  // 1. Busca o e-mail na sua lista de CONFIGuração
   if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) {
     return CONFIG.nomesAtendentes[s];
   }
   
-  // 2. Se não existir no dicionário, formata o login (remove pontos e underlines)
-  return s.replace(/[\._]/g,' ').trim();
+  // 2. Se for um e-mail novo que não está na lista, aplica uma formatação genérica (Plano B)
+  let prefix = s.split('@')[0].replace(/[\._\-]/g, ' ').trim();
+  return prefix.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
 
 function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
@@ -299,7 +311,7 @@ const PALETA = [
 
 /* estado dinâmico */
 let TOKEN='';
-let agentes={}; // Estrutura: { "Fila A": { "João": { count: 1, lastTime: Date } } }
+let agentes={}; // Estrutura: { "Fila A": { "João Silva": { count: 1, lastTime: Date } } }
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 
 /* login */
@@ -384,9 +396,10 @@ function processar(tickets){
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
     
-    // Se a fila estiver vazia ou constar na lista de ignoradas, pula pro próximo ticket
+    // Ignora as filas indesejadas (incluindo a Direct_Transfer)
     if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
     
+    // Passa o ID pela nossa função melhorada que formata/traduz o nome
     const an = i2n(t.agentIdentity || '');
     if(!an) continue;
 
@@ -545,7 +558,7 @@ function render(){
   });
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
 
-  // Snapshot para animação de quem acabou de atender
+  // Snapshot para animação
   prevAgentes = {};
   filasDescobertas.forEach(f => {
     prevAgentes[f] = {};
