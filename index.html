@@ -117,8 +117,8 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .dv{width:1px;height:30px;background:var(--border);flex-shrink:0;}
 .lu{margin-left:auto;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 
-/* GRID */
-.gd{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;}
+/* GRID RESPONSIVO NA RAIZ */
+.gd{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%, 320px),1fr));gap:16px;align-items:start;}
 
 /* CARD */
 .cd{background:var(--s1);border:1px solid var(--border);border-radius:var(--rxl);overflow:hidden; animation: fadeIn 0.3s ease;}
@@ -168,7 +168,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .rr.bump{animation:bump .8s ease forwards;}
 @keyframes bump{0%{background:transparent;}20%{background:rgba(52,211,153,.1);}100%{background:transparent;}}
 
-/* PRÓXIMO */
+/* PRÓXIMO NA LISTA (Apenas contorno verde, animação removida daqui) */
 .rr.proximo{
   background:rgba(52,211,153,.07);
   border:1px solid rgba(52,211,153,.25);
@@ -236,6 +236,46 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .toast{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--s2);border:1px solid rgba(248,113,113,.3);border-radius:var(--r);padding:12px 18px;font-size:12px;font-family:var(--mono);color:var(--red);max-width:340px;line-height:1.7;opacity:0;transform:translateY(12px);transition:opacity .3s,transform .3s;pointer-events:none;}
 .toast.show{opacity:1;transform:translateY(0);}
 @keyframes spin{to{transform:rotate(360deg);}}
+
+/* =========================================================================
+   CEREJA DO BOLO: REGRAS DE RESPONSIVIDADE (MEDIA QUERIES)
+   ========================================================================= */
+@media (max-width: 850px) {
+  .hd { padding: 0 16px; }
+  .mn { padding: 16px 16px 24px; }
+  .ft { padding: 14px 16px; }
+}
+
+@media (max-width: 650px) {
+  /* Cabeçalho centralizado e empilhado */
+  .hd { height: auto; flex-direction: column; padding: 16px; gap: 14px; text-align: center; }
+  .logo { width: 100%; justify-content: center; }
+  .hr { width: 100%; justify-content: center; flex-wrap: wrap; gap: 12px; }
+  
+  /* Botões de resumo divididos */
+  .sb { justify-content: center; gap: 6px; }
+  .sc { flex: 1 1 calc(33% - 6px); padding: 8px; text-align: center; }
+  .dv { display: none; } /* Oculta a barrinha vertical de separação */
+  .lu { margin-left: 0; width: 100%; text-align: center; margin-top: 8px; }
+  
+  /* Rodapés */
+  .ft { flex-direction: column; text-align: center; gap: 10px; }
+  .cdf { flex-direction: column; text-align: center; gap: 8px; }
+  
+  /* Ajuste no Login para telas pequenas */
+  .lc { padding: 28px 24px; margin: 0 12px; }
+}
+
+@media (max-width: 480px) {
+  /* Em telas muito pequenas (Mobile em pé), os cards de resumo ficam de 2 em 2 */
+  .sc { flex: 1 1 calc(50% - 6px); }
+  
+  /* O Header do Card (Título da Fila) fica centralizado */
+  .cht { flex-direction: column; align-items: center; text-align: center; gap: 16px; }
+  .qnw { flex-direction: column; }
+  .qt { text-align: center; width: 100%; }
+}
+/* ========================================================================= */
 </style>
 </head>
 <body>
