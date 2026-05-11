@@ -282,8 +282,8 @@ function abrirApp(){
 function blipUrl(){return CONFIG.contractId?`https://${CONFIG.contractId}.http.msging.net/commands`:'https://http.msging.net/commands';}
 function buildUri(skip=0){
   const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
-  const f=[`closeDate ge datetimeoffset'${ini2.toISOString()}'`,`closeDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
-  return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=${skip}&$take=100&$orderby=closeDate asc`;
+  const f=[`closedDate ge datetimeoffset'${ini2.toISOString()}'`,`closedDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
+  return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=${skip}&$take=100&$orderby=closedDate asc`;
 }
 /* ─────────────────────────────────────────────────────────────
    WORKER URL — cole aqui a URL do seu Cloudflare Worker após o deploy
@@ -303,10 +303,10 @@ const PROXIES = [
 async function chamada(target,body,pfn){
   const url=pfn?pfn(target):target;
   const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  if(!r.ok){let et='';try{const ej=await r.clone().json();et=ej?.reason?.description||ej?.message||'';}catch(e){et=await r.text().catch(()=>'');}throw new Error(`HTTP ${r.status}${et?' — '+et:''}`);}
   let d=await r.json();
   if(d.contents)d=JSON.parse(d.contents);
-  if(d.status==='failure')throw new Error(d.reason?.description||'Blip failure');
+  if(d.status==='failure')throw new Error('Blip: '+(d.reason?.description||d.reason?.code||JSON.stringify(d.reason)||'failure'));
   return d;
 }
 async function chamarBlip(bodyFn){
