@@ -333,7 +333,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </main>
 
   <footer class="ft">
-    <span>Filas dinâmicas · Filtro por clique ativo · Oculta offline após 2 min</span>
+    <span>Memória Histórica Ativa · Filtro Interativo · Oculta offline após 2 min</span>
     <span id="fi2">atualização a cada — s</span>
   </footer>
 </div>
@@ -343,6 +343,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 <script>
 const LS='blip_token_v1';
 const LS_TIMER='blip_offline_timers_v1';
+const LS_HISTORY='blip_history_v1'; // NOVO: Chave para salvar a ordem de ontem
 const $=id=>document.getElementById(id);
 
 /* utilitários */
@@ -381,11 +382,15 @@ let agentes={};
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 let filasOcultas = new Set();
 
-// Carrega os cronômetros salvos (Proteção contra F5 / Reload)
+// Carrega os cronômetros salvos e o Histórico de Ontem
 let tempoOfflineCronometro = {};
+let historicoAgentes = {};
 try {
   const tSalvo = localStorage.getItem(LS_TIMER);
   if(tSalvo) tempoOfflineCronometro = JSON.parse(tSalvo);
+  
+  const hSalvo = localStorage.getItem(LS_HISTORY);
+  if(hSalvo) historicoAgentes = JSON.parse(hSalvo);
 } catch(e){}
 
 function toggleFilaVisibilidade(nomeFila) {
@@ -422,6 +427,7 @@ async function fazerLogin(){
 function fazerLogout(){
   localStorage.removeItem(LS);
   localStorage.removeItem(LS_TIMER);
+  // O Histórico não é removido no logout por segurança, apenas com limpeza de cache
   TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
   filasOcultas.clear(); tempoOfflineCronometro = {};
@@ -491,6 +497,7 @@ function processar(tickets){
   agentes = {}; 
   const filasIgnoradasNomes = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
+  // 1. LER TICKETS DE HOJE
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
     if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
@@ -511,6 +518,50 @@ function processar(tickets){
       }
     }
   }
+
+  // --- MEMÓRIA HISTÓRICA (Ranking Justo no Dia Seguinte) ---
+  const agora = Date.now();
+  
+  // A. Salva os dados de HOJE no histórico
+  Object.keys(agentes).forEach(fila => {
+    if(!historicoAgentes[fila]) historicoAgentes[fila] = {};
+    Object.keys(agentes[fila]).forEach(nome => {
+      const hojeTime = agentes[fila][nome].lastTime;
+      if (hojeTime) {
+        const histTime = historicoAgentes[fila][nome];
+        if (!histTime || hojeTime.getTime() > histTime) {
+          historicoAgentes[fila][nome] = hojeTime.getTime();
+        }
+      }
+    });
+  });
+
+  // B. Limpeza inteligente (Remove fantasmas inativos há mais de 3 dias)
+  const limiteDias = agora - (3 * 24 * 60 * 60 * 1000);
+  Object.keys(historicoAgentes).forEach(fila => {
+    Object.keys(historicoAgentes[fila]).forEach(nome => {
+      if (historicoAgentes[fila][nome] < limiteDias) {
+        delete historicoAgentes[fila][nome];
+      }
+    });
+    if (Object.keys(historicoAgentes[fila]).length === 0) delete historicoAgentes[fila];
+  });
+
+  localStorage.setItem(LS_HISTORY, JSON.stringify(historicoAgentes));
+
+  // C. Injeta a ordem de ontem para quem ainda não atendeu hoje (count continuará 0)
+  Object.keys(historicoAgentes).forEach(fila => {
+    if(!agentes[fila]) agentes[fila] = {};
+    Object.keys(historicoAgentes[fila]).forEach(nome => {
+      if(!agentes[fila][nome]) {
+        agentes[fila][nome] = { 
+          count: 0, 
+          lastTime: new Date(historicoAgentes[fila][nome]) 
+        };
+      }
+    });
+  });
+  // ---------------------------------------------------------
 }
 
 // Lógica blindada do cronômetro de Offline com Salvamento Automático
@@ -618,7 +669,7 @@ function render(){
             <div class="qem">${cfg.emoji}</div>
             <div>
               <div class="qn">${fila}</div>
-              <div class="qa">${dados.qtdVisiveis} visíveis · ${dados.totalFila} atendimentos</div>
+              <div class="qa">${dados.qtdVisiveis} visíveis · ${dados.totalFila} atend. hoje</div>
             </div>
           </div>
           <div class="qt">
