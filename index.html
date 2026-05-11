@@ -254,7 +254,7 @@ async function fazerLogin(){
   try{
     await buscar(true);
     localStorage.setItem(LS,TOKEN);
-    await abrirApp();
+    abrirApp();
   }catch(e){
     TOKEN='';btn.disabled=false;btn.textContent='Entrar no painel';
     inp.classList.add('err');
@@ -269,10 +269,9 @@ function fazerLogout(){
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
-async function abrirApp(){
+function abrirApp(){
   $('lw').classList.add('hidden');$('app').classList.add('visible');
   $('fi2').textContent=`atualização a cada ${CONFIG.intervaloSegundos}s`;
-  await carregarAtendentes();
   iniciarCiclo();
 }
 
@@ -334,62 +333,20 @@ async function buscar(teste=false){
   return todos;
 }
 
-/* processamento */
+/* processamento — operadores descobertos dinamicamente pelos tickets */
 function processar(tickets){
-  /* zera contagens mantendo a lista de atendentes */
-  Object.entries(CONFIG.filas).forEach(([f,c])=>c.atendentes.forEach(a=>{cnts[f][a]=0;}));
+  /* reconstrói a lista de atendentes a partir dos tickets de hoje */
+  Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
   const ig=norm(CONFIG.filaIgnorar);
   for(const t of tickets){
     const fr=(t.team||'').trim();if(!fr||norm(fr)===ig)continue;
     const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));if(!fk)continue;
-    /* tenta nome direto ou converte identidade */
     const an=(t.agentName||i2n(t.agentIdentity||'')).trim();if(!an)continue;
-    /* busca correspondência normalizada */
+    /* normaliza para evitar duplicatas com grafia diferente */
     let ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
-    if(!ak){
-      /* atendente novo encontrado no ticket — adiciona dinamicamente */
-      CONFIG.filas[fk].atendentes.push(an);
-      cnts[fk][an]=0;
-      ak=an;
-    }
-    cnts[fk][ak]=(cnts[fk][ak]||0)+1;
+    if(!ak){CONFIG.filas[fk].atendentes.push(an);cnts[fk][an]=0;ak=an;}
+    cnts[fk][ak]++;
   }
-}
-
-/* carrega atendentes da API do Blip e popula CONFIG.filas[*].atendentes */
-async function carregarAtendentes(){
-  Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
-  let skip=0;
-  while(true){
-    const s=skip;
-    let d;
-    try{
-      d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',
-        uri:`/attendants?$skip=${s}&$take=100`}));
-    }catch(e){console.warn('carregarAtendentes falhou:',e.message);break;}
-    const items=d?.resource?.items||[];
-    for(const att of items){
-      /* Blip pode retornar fullName, name ou derivar da identity */
-      const nome=(att.fullName||att.name||i2n(att.identity||att.agentIdentity||'')).trim();
-      if(!nome)continue;
-      /* teams pode ser array de strings ou array de objetos {name} */
-      const teams=att.teams||[];
-      for(const t of (Array.isArray(teams)?teams:[teams])){
-        const tn=typeof t==='string'?t:(t?.name||t?.id||'');
-        const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(tn));
-        if(!fk)continue;
-        if(!CONFIG.filas[fk].atendentes.includes(nome)){
-          CONFIG.filas[fk].atendentes.push(nome);
-          cnts[fk][nome]=0;
-        }
-      }
-    }
-    if(items.length<100)break;
-    skip+=100;
-  }
-  console.log('Atendentes carregados:',Object.fromEntries(
-    Object.entries(CONFIG.filas).map(([f,c])=>[f,c.atendentes])
-  ));
 }
 
 /* render */
