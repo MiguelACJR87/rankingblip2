@@ -130,8 +130,33 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .qem{width:36px;height:36px;border-radius:10px;background:var(--s2);border:1px solid var(--border-em);display:flex;align-items:center;justify-content:center;font-size:17px;}
 .qn{font-size:16px;font-weight:700;letter-spacing:-.01em;}
 .qa{font-size:10px;font-family:var(--mono);color:var(--md);margin-top:1px;letter-spacing:.06em;}
-.qt{text-align:right;}
-.qnum{font-size:28px;font-weight:800;letter-spacing:-.04em;color:var(--q-cor);line-height:1;}
+
+/* ---- ADIÇÃO VISUAL: QUADRADO PISCANDO EM VERMELHO NO TOPO ---- */
+.qt {
+  text-align: right;
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  animation: piscar-bg-topo 1.2s ease-in-out infinite;
+}
+.qt .qnum {
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:-.04em;
+  color:var(--q-cor);
+  line-height:1;
+  animation: piscar-texto-topo 1.2s ease-in-out infinite;
+}
+@keyframes piscar-bg-topo {
+  0%, 100% { background: transparent; border-color: transparent; box-shadow: none; }
+  50% { background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4); box-shadow: 0 0 12px rgba(248, 113, 113, 0.3); }
+}
+@keyframes piscar-texto-topo {
+  0%, 100% { color: var(--q-cor); }
+  50% { color: var(--red); text-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
+}
+/* -------------------------------------------------------------------------- */
+
 .qlbl{font-size:9px;font-family:var(--mono);color:var(--lo);text-transform:uppercase;letter-spacing:.1em;}
 .qbt{height:3px;background:var(--s3);border-radius:2px;overflow:hidden;}
 .qbf{height:100%;border-radius:2px;background:var(--q-cor);transition:width .6s ease;}
@@ -151,27 +176,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 }
 .rr.proximo .av{border-color:rgba(52,211,153,.5);box-shadow:0 0 10px rgba(52,211,153,.2);}
 
-/* ---- ADIÇÃO VISUAL: QUADRADO PISCANDO EM VERMELHO NO NOME DO PRÓXIMO ---- */
-.rr.proximo .nc {
-  padding: 2px 8px;
-  margin-left: -4px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  animation: piscar-bg-nome 1.2s ease-in-out infinite;
-}
-.rr.proximo .nc .nf {
-  animation: piscar-texto-nome 1.2s ease-in-out infinite;
-}
-@keyframes piscar-bg-nome {
-  0%, 100% { background: transparent; border-color: transparent; box-shadow: none; }
-  50% { background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4); box-shadow: 0 0 8px rgba(248, 113, 113, 0.3); }
-}
-@keyframes piscar-texto-nome {
-  0%, 100% { color: inherit; }
-  50% { color: var(--red); text-shadow: 0 0 4px rgba(248, 113, 113, 0.4); }
-}
-/* -------------------------------------------------------------------------- */
-
 /* ÚLTIMO */
 .rr.ultimo{background:rgba(255,255,255,.03);}
 
@@ -181,6 +185,12 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 
 /* avatar */
 .av{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--border-em);background:var(--q-avbg);color:var(--q-cor);}
+
+/* AVATAR COM BOLINHA DE STATUS */
+.av-w{position:relative;width:32px;height:32px;flex-shrink:0;}
+.st-dot{position:absolute;bottom:-2px;right:-2px;width:12px;height:12px;border-radius:50%;border:2.5px solid var(--s1);transition:background 0.3s ease;}
+.st-on{background:var(--green);box-shadow:0 0 4px rgba(52,211,153,0.4);}
+.st-off{background:var(--red);}
 
 /* nome */
 .nc{flex:1;min-width:0;}
@@ -292,6 +302,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 
 <script>
 const LS='blip_token_v1';
+const LS_TIMER='blip_offline_timers_v1';
 const $=id=>document.getElementById(id);
 
 /* utilitários */
@@ -312,12 +323,7 @@ function i2n(id){
 
 function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
-
-// FUNÇÃO fHM RESTAURADA AQUI!
-function fHM(d){
-  if(!d) return null;
-  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-}
+function fHM(d){if(!d) return null; return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 /* Cores e emojis dinâmicos para filas descobertas */
 const PALETA = [
@@ -334,7 +340,13 @@ let TOKEN='';
 let agentes={}; 
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 let filasOcultas = new Set();
+
+// Carrega os cronômetros salvos (Proteção contra F5 / Reload)
 let tempoOfflineCronometro = {};
+try {
+  const tSalvo = localStorage.getItem(LS_TIMER);
+  if(tSalvo) tempoOfflineCronometro = JSON.parse(tSalvo);
+} catch(e){}
 
 function toggleFilaVisibilidade(nomeFila) {
   if (filasOcultas.has(nomeFila)) filasOcultas.delete(nomeFila); 
@@ -368,7 +380,9 @@ async function fazerLogin(){
 }
 
 function fazerLogout(){
-  localStorage.removeItem(LS);TOKEN='';
+  localStorage.removeItem(LS);
+  localStorage.removeItem(LS_TIMER);
+  TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
   filasOcultas.clear(); tempoOfflineCronometro = {};
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
@@ -459,28 +473,31 @@ function processar(tickets){
   }
 }
 
-// Lógica inteligente do cronômetro de Offline
+// Lógica blindada do cronômetro de Offline com Salvamento Automático
 function atualizarCronometrosOffline(atendentesApi) {
   const agora = Date.now();
   const mapaOnline = {};
 
   atendentesApi.forEach(a => {
+    if (!a.identity) return;
     const nome = i2n(a.identity);
-    mapaOnline[nome] = a.status === 'Online';
+    mapaOnline[nome] = (a.status && a.status.toString().toLowerCase() === 'online');
   });
 
   Object.keys(agentes).forEach(fila => {
     Object.keys(agentes[fila]).forEach(nome => {
       const isOnline = mapaOnline[nome] === true;
       if (isOnline) {
-        delete tempoOfflineCronometro[nome];
+        delete tempoOfflineCronometro[nome]; 
       } else {
         if (!tempoOfflineCronometro[nome]) {
-          tempoOfflineCronometro[nome] = agora;
+          tempoOfflineCronometro[nome] = agora; 
         }
       }
     });
   });
+
+  localStorage.setItem(LS_TIMER, JSON.stringify(tempoOfflineCronometro));
 }
 
 /* render */
@@ -561,7 +578,7 @@ function render(){
             <div class="qem">${cfg.emoji}</div>
             <div>
               <div class="qn">${fila}</div>
-              <div class="qa">${dados.qtdVisiveis} online · ${dados.totalFila} atendimentos</div>
+              <div class="qa">${dados.qtdVisiveis} visíveis · ${dados.totalFila} atendimentos</div>
             </div>
           </div>
           <div class="qt">
@@ -603,9 +620,23 @@ function render(){
       const timeStr = ag.lastTime ? fHM(ag.lastTime) : 'não atendeu';
       const timeClass = ag.lastTime ? 'ag-time' : 'ag-time none';
 
+      const isOnlineAPI = !tempoOfflineCronometro[ag.nome];
+      const dotClass = isOnlineAPI ? 'st-on' : 'st-off';
+      
+      let titleTooltip = isOnlineAPI ? 'Status: Online' : 'Status: Offline';
+      if (!isOnlineAPI) {
+         const segsFora = Math.floor((agora - tempoOfflineCronometro[ag.nome]) / 1000);
+         titleTooltip = `Offline há ${segsFora}s (Oculta em ${CONFIG.minutosOfflineTolerancia} min)`;
+      }
+
       row.innerHTML=`
         <div style="width:70px;flex-shrink:0;display:flex;align-items:center;">${posIcon}</div>
-        <div class="av">${ini(ag.nome)}</div>
+        
+        <div class="av-w" title="${titleTooltip}">
+          <div class="av">${ini(ag.nome)}</div>
+          <div class="st-dot ${dotClass}"></div>
+        </div>
+
         <div class="nc">
           <span class="nf">${pn}</span> <span class="nl">${rest.join(' ')}</span>
         </div>
