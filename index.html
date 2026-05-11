@@ -11,18 +11,15 @@
 
 <script>
 const CONFIG = {
-  // Sua URL do Worker
   workerUrl:         "https://snowy-boat-7e2a.gestao-02.workers.dev/",
   contractId:        "techmetria1",
   intervaloSegundos: 20,
   
-  // Filas que não devem aparecer no painel
+  // Tempo de tolerância em MINUTOS antes de esconder o atendente offline
+  minutosOfflineTolerancia: 2,
+  
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
 
-  // ──────────────────────────────────────────────────
-  // DE-PARA DE ATENDENTES
-  // O código procurará o e-mail exato e exibirá o nome.
-  // ──────────────────────────────────────────────────
   nomesAtendentes: {
     "gestao.01@techmetria.com.br": "Matheus Muniz",
     "gestao.02@techmetria.com.br": "Miguel Carvalho",
@@ -33,7 +30,7 @@ const CONFIG = {
     "gestao.08@techmetria.com.br": "Nathalia Gomes",
     "consumo@techmetria.com.br": "Diego Moura",
     "comercial@techmetria.com.br": "Juliana Gomes",
-    "renatto.fagundes@techmetria.com": "Cyntia Costa",
+    "renatto.fagundes@techmetria.com.br": "Cyntia Costa",
     "adm.01@techmetria.com.br": "Nitiele Silva",
     "adm.02@techmetria.com.br": "Camila Patrício",
     "adm.03@techmetria.com.br": "Gresy Vivian",
@@ -109,7 +106,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .sb{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
 .sc{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:8px 14px;}
 
-/* CSS do novo filtro interativo */
+/* Filtro interativo */
 .sc.clickable { cursor: pointer; transition: all 0.2s ease; user-select: none; }
 .sc.clickable:hover { background: var(--s2); transform: translateY(-1px); border-color: rgba(255,255,255,0.15); }
 .sc.clickable:active { transform: translateY(0); }
@@ -146,7 +143,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .rr.bump{animation:bump .8s ease forwards;}
 @keyframes bump{0%{background:transparent;}20%{background:rgba(52,211,153,.1);}100%{background:transparent;}}
 
-/* PRÓXIMO — destaque especial */
+/* PRÓXIMO */
 .rr.proximo{
   background:rgba(52,211,153,.07);
   border:1px solid rgba(52,211,153,.25);
@@ -154,7 +151,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 }
 .rr.proximo .av{border-color:rgba(52,211,153,.5);box-shadow:0 0 10px rgba(52,211,153,.2);}
 
-/* ÚLTIMO — quem acabou de atender */
+/* ÚLTIMO */
 .rr.ultimo{background:rgba(255,255,255,.03);}
 
 /* posição / indicador */
@@ -175,7 +172,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .ag-time.none{color:var(--lo);}
 .ag-cnt{font-size:10px;font-family:var(--mono);color:var(--lo);}
 
-/* badge PRÓXIMO */
+/* badges */
 .badge-prox{
   display:inline-flex;align-items:center;gap:4px;
   font-size:9px;font-family:var(--mono);font-weight:600;
@@ -188,7 +185,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 }
 @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 rgba(52,211,153,0);}50%{box-shadow:0 0 8px rgba(52,211,153,.3);}}
 
-/* badge ÚLTIMO */
 .badge-ult{
   font-size:9px;font-family:var(--mono);
   color:var(--q-cor);
@@ -224,7 +220,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
     </div>
 
     <div class="lh">Acesso ao painel</div>
-    <p class="ls">Cole sua chave de acesso do Blip abaixo.<br>Ela fica salva <strong>apenas neste navegador</strong> — nunca é enviada a nenhum servidor externo.</p>
+    <p class="ls">Cole sua chave de acesso do Blip abaixo.<br>Ela fica salva <strong>permanentemente neste navegador</strong>.</p>
 
     <label class="fl" for="tkn">Chave de acesso (Authorization)</label>
     <div class="fiw">
@@ -261,8 +257,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   <div class="pr"><div class="pf" id="pf"></div></div>
 
   <main class="mn">
-    <div class="sb" id="summary-bar">
-      </div>
+    <div class="sb" id="summary-bar"></div>
     <div class="gd" id="gd"></div>
   </main>
 
@@ -283,21 +278,13 @@ function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>
 function ini(n){return n.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase();}
 function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 
-// ESTA É A FUNÇÃO QUE LÊ O E-MAIL DO BLIP E TRADUZ PARA O NOME REAL
+// Decodifica e traduz o nome
 function i2n(id){
   if(!id) return '';
   let s = id;
   try { s = decodeURIComponent(s); } catch(e){}
-  
-  // Limpa os sufixos
   s = s.replace('@desk.msging.net', '').replace('@blip.ai', '').trim();
-  
-  // 1. Busca o e-mail na sua lista
-  if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) {
-    return CONFIG.nomesAtendentes[s];
-  }
-  
-  // 2. Formatação Genérica (Plano B)
+  if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) return CONFIG.nomesAtendentes[s];
   let prefix = s.split('@')[0].replace(/[\._\-]/g, ' ').trim();
   return prefix.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
@@ -315,20 +302,17 @@ const PALETA = [
   { cor: "#38bdf8", corGlow: "rgba(56,189,248,0.25)", emoji: "⚡" }
 ];
 
-/* estado dinâmico */
+/* ESTADO DO SISTEMA */
 let TOKEN='';
 let agentes={}; 
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
-
-// NOVO: Controle de Filas Ocultas
 let filasOcultas = new Set();
+let tempoOfflineCronometro = {}; // { "Miguel Carvalho": 169000000 (timestamp em que sumiu) }
+
 function toggleFilaVisibilidade(nomeFila) {
-  if (filasOcultas.has(nomeFila)) {
-    filasOcultas.delete(nomeFila); // Mostra
-  } else {
-    filasOcultas.add(nomeFila); // Esconde
-  }
-  render(); // Recarrega a tela instantaneamente
+  if (filasOcultas.has(nomeFila)) filasOcultas.delete(nomeFila); 
+  else filasOcultas.add(nomeFila);
+  render();
 }
 
 /* login */
@@ -359,7 +343,7 @@ async function fazerLogin(){
 function fazerLogout(){
   localStorage.removeItem(LS);TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
-  filasOcultas.clear(); // Limpa as ocultas ao sair
+  filasOcultas.clear(); tempoOfflineCronometro = {};
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
@@ -369,13 +353,13 @@ function abrirApp(){
   iniciarCiclo();
 }
 
-/* auto-login */
+/* auto-login infinito */
 (()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
 
-/* api */
+/* chamadas na API */
 async function chamadaWorker(body){
   const wu=(CONFIG.workerUrl||'').trim();
-  if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no script');
+  if(!wu) throw new Error('Configure WORKER_URL no script');
   const r=await fetch(wu,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Contract-Id':CONFIG.contractId||''},body:JSON.stringify(body)});
   if(!r.ok) throw new Error('Worker HTTP '+r.status);
   const d=await r.json();
@@ -383,6 +367,7 @@ async function chamadaWorker(body){
   return d;
 }
 
+// 1. Busca os Tickets fechados hoje
 async function buscar(teste=false){
   if(teste){
     const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets?$closed=true&$skip=0&$take=1'};
@@ -395,8 +380,7 @@ async function buscar(teste=false){
     const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
     const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
     const uri='/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip='+skip+'&$take='+PAGE;
-    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri};
-    const d=await chamadaWorker(body);
+    const d=await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri});
     const items=d?.resource?.items||[];
     todos=todos.concat(items);
     if(items.length<PAGE) continua=false; 
@@ -406,11 +390,27 @@ async function buscar(teste=false){
   return todos;
 }
 
-/* processamento DINÂMICO */
+// 2. Busca o Status (Online/Offline) no painel do Blip
+async function buscarAtendentesStatus(){
+  const PAGE=100;
+  let skip=0, todos=[], continua=true;
+  while(continua){
+    const uri='/attendants?$skip='+skip+'&$take='+PAGE;
+    const d=await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri});
+    const items=d?.resource?.items||[];
+    todos=todos.concat(items);
+    if(items.length<PAGE) continua=false;
+    else skip+=PAGE;
+  }
+  return todos;
+}
+
+/* processamento principal */
 function processar(tickets){
   agentes = {}; 
   const filasIgnoradasNomes = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
+  // Processa as filas com base no histórico de hoje
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
     if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
@@ -433,43 +433,75 @@ function processar(tickets){
   }
 }
 
-/* render */
-function fHM(d){
-  if(!d) return null;
-  return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+// Lógica inteligente do cronômetro de Offline
+function atualizarCronometrosOffline(atendentesApi) {
+  const agora = Date.now();
+  const mapaOnline = {};
+
+  // Mapeia quem está online no painel agora
+  atendentesApi.forEach(a => {
+    const nome = i2n(a.identity);
+    mapaOnline[nome] = a.status === 'Online';
+  });
+
+  // Atualiza o cronômetro para todos que estão nas nossas filas
+  Object.keys(agentes).forEach(fila => {
+    Object.keys(agentes[fila]).forEach(nome => {
+      const isOnline = mapaOnline[nome] === true;
+      if (isOnline) {
+        // Se voltou a ficar online, zera o cronômetro!
+        delete tempoOfflineCronometro[nome];
+      } else {
+        // Se ficou offline e ainda não estava sendo cronometrado, começa agora
+        if (!tempoOfflineCronometro[nome]) {
+          tempoOfflineCronometro[nome] = agora;
+        }
+      }
+    });
+  });
 }
 
+/* render */
 function render(){
   const gd=$('gd'); gd.innerHTML='';
-  
-  // Obtém as filas descobertas
   const filasDescobertas = Object.keys(agentes).sort();
 
-  // 1. Pré-calcula TODOS os totais para garantir que a barra global esteja sempre correta (mesmo com filas ocultas)
   let totGlobal = 0;
   const dadosFilas = {};
+  const agora = Date.now();
+  const limiteDesaparecimentoMs = CONFIG.minutosOfflineTolerancia * 60 * 1000;
 
   filasDescobertas.forEach(fila => {
     const atendentesDaFila = Object.keys(agentes[fila]);
-    const lista_ag = atendentesDaFila.map(a => ({
-      nome: a, count: agentes[fila][a].count, lastTime: agentes[fila][a].lastTime
-    }));
+    
+    // Todos os agentes para calcular o total real (inclusive quem foi oculto)
+    const totalFila = atendentesDaFila.reduce((s, a) => s + agentes[fila][a].count, 0);
+    totGlobal += totalFila;
 
-    // Ordenação
-    const ordenados = [...lista_ag].sort((a,b)=>{
+    // Mas para RENDERIZAR e RANKEAR, nós filtramos os que passaram do tempo offline tolerado
+    const lista_ag_visiveis = [];
+    atendentesDaFila.forEach(a => {
+      const inicioOffline = tempoOfflineCronometro[a];
+      // Verifica se está oculto pelo cronômetro
+      if (inicioOffline && (agora - inicioOffline) > limiteDesaparecimentoMs) return;
+
+      lista_ag_visiveis.push({
+        nome: a, count: agentes[fila][a].count, lastTime: agentes[fila][a].lastTime
+      });
+    });
+
+    // Ordenação dos que ficaram na tela
+    const ordenados = [...lista_ag_visiveis].sort((a,b)=>{
       if(!a.lastTime && !b.lastTime) return 0;
       if(!a.lastTime) return 1;
       if(!b.lastTime) return -1;
       return b.lastTime - a.lastTime;
     });
 
-    const totalFila = lista_ag.reduce((s,r)=>s+r.count,0);
-    totGlobal += totalFila;
-
-    dadosFilas[fila] = { atendentesDaFila, ordenados, totalFila };
+    dadosFilas[fila] = { ordenados, totalFila, qtdVisiveis: lista_ag_visiveis.length };
   });
 
-  // 2. Renderiza a barra de resumo interativa (BOTÕES DE FILTRO)
+  // Renderiza Resumo Superior Interativo
   const sb = $('summary-bar');
   let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">${totGlobal}</div></div><div class="dv"></div>`;
   
@@ -477,21 +509,18 @@ function render(){
     const estilo = PALETA[index % PALETA.length];
     const isOculta = filasOcultas.has(fila);
     const classeExtra = isOculta ? " hidden-queue" : "";
-    
-    // Adicionado o onclick na caixa de resumo
     sbHTML += `
       <div class="sc clickable${classeExtra}" onclick="toggleFilaVisibilidade('${fila}')" title="Clique para ocultar ou mostrar esta fila">
         <div class="scl">${fila} ${isOculta ? '🫥' : ''}</div>
         <div class="scv" style="color:${estilo.cor}">${dadosFilas[fila].totalFila}</div>
       </div>`;
   });
-  
   sbHTML += `<div class="lu" id="lu">aguardando...</div>`;
   sb.innerHTML = sbHTML;
 
-  // 3. Renderiza os cards das filas (APENAS SE NÃO ESTIVEREM OCULTAS)
+  // Renderiza Cards das Filas
   filasDescobertas.forEach((fila, index) => {
-    if (filasOcultas.has(fila)) return; // Se a fila foi clicada e escondida, ignora este passo.
+    if (filasOcultas.has(fila)) return; 
 
     const estilo = PALETA[index % PALETA.length];
     const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
@@ -514,7 +543,7 @@ function render(){
             <div class="qem">${cfg.emoji}</div>
             <div>
               <div class="qn">${fila}</div>
-              <div class="qa">${dados.atendentesDaFila.length} atendente${dados.atendentesDaFila.length!==1?'s':''} · ${dados.totalFila} hoje</div>
+              <div class="qa">${dados.qtdVisiveis} online · ${dados.totalFila} atendimentos</div>
             </div>
           </div>
           <div class="qt">
@@ -572,7 +601,6 @@ function render(){
 
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
 
-  // Snapshot para animação
   prevAgentes = {};
   filasDescobertas.forEach(f => {
     prevAgentes[f] = {};
@@ -594,7 +622,6 @@ function barra(){
   },400);
 }
 
-/* relógio */
 setInterval(()=>{$('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());},1000);
 $('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());
 
@@ -602,10 +629,18 @@ $('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());
 let tt;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),5000);}
 
-/* ciclo */
+/* CICLO PRINCIPAL */
 async function atualizar(){
   try{
-    processar(await buscar());
+    // Executa as DUAS chamadas para a API do Blip simultaneamente (Tickets e Status dos Atendentes)
+    const [tickets, atendentesApi] = await Promise.all([
+      buscar(), 
+      buscarAtendentesStatus()
+    ]);
+
+    processar(tickets);
+    atualizarCronometrosOffline(atendentesApi); // Aciona o motor invisível de ocultação
+    
     ultima=new Date();
     render();
     const p=$('pill');p.classList.remove('off');$('ptxt').textContent='ao vivo';
