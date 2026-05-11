@@ -337,12 +337,6 @@ function abrirApp(){
 (()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
 
 /* api */
-function buildUri(teste){
-  if(teste) return '/tickets?$closed=true&$skip=0&$take=1';
-  const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
-  const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
-  return '/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip=0&$take=500';
-}
 async function chamadaWorker(body){
   const wu=(CONFIG.workerUrl||'').trim();
   if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no index.html (veja instruções)');
@@ -352,6 +346,7 @@ async function chamadaWorker(body){
   if(d?.status==='failure') throw new Error(d.reason?.description||'Blip: failure');
   return d;
 }
+
 async function buscar(teste=false){
   if(teste){
     const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets?$closed=true&$skip=0&$take=1'};
@@ -516,14 +511,7 @@ function render(){
   });
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
 
-  // snapshot para detectar mudanças
-  Object.entries(CONFIG.filas).forEach(([f])=>{
-    prevAgentes[f]={};
-    cfg.atendentes?.forEach(a=>{
-      prevAgentes[f][a]={...agentes[f][a]};
-    });
-  });
-  // fix: iterar corretamente
+  // ✅ CORREÇÃO: snapshot único e correto — removido o bloco duplicado com "cfg" indefinido
   Object.entries(CONFIG.filas).forEach(([f,c])=>{
     prevAgentes[f]={};
     c.atendentes.forEach(a=>{prevAgentes[f][a]={...agentes[f][a]};});
