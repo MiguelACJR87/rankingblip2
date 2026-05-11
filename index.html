@@ -290,7 +290,7 @@ function buildUri(skip=0){
    Ex: 'https://blip-proxy.seunome.workers.dev'
    Deixe em branco ('') para pular e usar os proxies públicos de fallback.
 ───────────────────────────────────────────────────────────── */
-const WORKER_URL = 'https://snowy-boat-7e2a.gestao-02.workers.dev';
+const WORKER_URL = 'https://throbbing-truth-21fb.gestao-02.workers.dev';
 
 const PROXIES = [
   /* 1º — Worker dedicado (encaminha Authorization sem bloqueio) */
@@ -302,7 +302,7 @@ const PROXIES = [
 ];
 async function chamada(target,body,pfn){
   const url=pfn?pfn(target):target;
-  const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(body)});
+  const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok)throw new Error(`HTTP ${r.status}`);
   let d=await r.json();
   if(d.contents)d=JSON.parse(d.contents);
