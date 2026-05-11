@@ -33,7 +33,7 @@ const CONFIG = {
     "gestao.08@techmetria.com.br": "Nathalia Gomes",
     "consumo@techmetria.com.br": "Diego Moura",
     "comercial@techmetria.com.br": "Juliana Gomes",
-    "renatto.fagundes@techmetria.com.br": "Cyntia Costa",
+    "renatto.fagundes@techmetria.com": "Cyntia Costa",
     "adm.01@techmetria.com.br": "Nitiele Silva",
     "adm.02@techmetria.com.br": "Camila Patrício",
     "adm.03@techmetria.com.br": "Gresy Vivian",
@@ -108,17 +108,24 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .mn{padding:24px 24px 32px;flex:1;position:relative;z-index:1;}
 .sb{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
 .sc{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:8px 14px;}
+
+/* CSS do novo filtro interativo */
+.sc.clickable { cursor: pointer; transition: all 0.2s ease; user-select: none; }
+.sc.clickable:hover { background: var(--s2); transform: translateY(-1px); border-color: rgba(255,255,255,0.15); }
+.sc.clickable:active { transform: translateY(0); }
+.sc.hidden-queue { opacity: 0.4; filter: grayscale(1); border-color: transparent; }
+
 .scl{font-size:10px;font-family:var(--mono);color:var(--lo);text-transform:uppercase;letter-spacing:.08em;}
 .scv{font-size:16px;font-weight:700;letter-spacing:-.02em;}
 .dv{width:1px;height:30px;background:var(--border);flex-shrink:0;}
 .lu{margin-left:auto;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 
 /* GRID */
-.gd{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start;}
-@media(max-width:960px){.gd{grid-template-columns:1fr;}}
+.gd{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start;}
 
 /* CARD */
-.cd{background:var(--s1);border:1px solid var(--border);border-radius:var(--rxl);overflow:hidden;}
+.cd{background:var(--s1);border:1px solid var(--border);border-radius:var(--rxl);overflow:hidden; animation: fadeIn 0.3s ease;}
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 .cdh{padding:18px 20px 14px;border-bottom:1px solid var(--border);position:relative;overflow:hidden;}
 .cdh::before{content:'';position:absolute;top:-30px;right:-20px;width:80px;height:80px;border-radius:50%;background:var(--q-glow);filter:blur(28px);pointer-events:none;}
 .cht{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;}
@@ -260,7 +267,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </main>
 
   <footer class="ft">
-    <span>Filas dinâmicas · Transferências excluídas · Somente hoje</span>
+    <span>Filas dinâmicas · Filtro por clique ativo · Somente hoje</span>
     <span id="fi2">atualização a cada — s</span>
   </footer>
 </div>
@@ -279,19 +286,18 @@ function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowe
 // ESTA É A FUNÇÃO QUE LÊ O E-MAIL DO BLIP E TRADUZ PARA O NOME REAL
 function i2n(id){
   if(!id) return '';
-  
   let s = id;
   try { s = decodeURIComponent(s); } catch(e){}
   
-  // Limpa os sufixos padrão que a API do Blip insere (para extrair apenas o e-mail real)
+  // Limpa os sufixos
   s = s.replace('@desk.msging.net', '').replace('@blip.ai', '').trim();
   
-  // 1. Busca o e-mail na sua lista de CONFIGuração
+  // 1. Busca o e-mail na sua lista
   if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) {
     return CONFIG.nomesAtendentes[s];
   }
   
-  // 2. Se for um e-mail novo que não está na lista, aplica uma formatação genérica (Plano B)
+  // 2. Formatação Genérica (Plano B)
   let prefix = s.split('@')[0].replace(/[\._\-]/g, ' ').trim();
   return prefix.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
@@ -311,8 +317,19 @@ const PALETA = [
 
 /* estado dinâmico */
 let TOKEN='';
-let agentes={}; // Estrutura: { "Fila A": { "João Silva": { count: 1, lastTime: Date } } }
+let agentes={}; 
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
+
+// NOVO: Controle de Filas Ocultas
+let filasOcultas = new Set();
+function toggleFilaVisibilidade(nomeFila) {
+  if (filasOcultas.has(nomeFila)) {
+    filasOcultas.delete(nomeFila); // Mostra
+  } else {
+    filasOcultas.add(nomeFila); // Esconde
+  }
+  render(); // Recarrega a tela instantaneamente
+}
 
 /* login */
 function toggleVis(){const i=$('tkn');i.type=i.type==='password'?'text':'password';}
@@ -342,6 +359,7 @@ async function fazerLogin(){
 function fazerLogout(){
   localStorage.removeItem(LS);TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
+  filasOcultas.clear(); // Limpa as ocultas ao sair
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
@@ -390,33 +408,21 @@ async function buscar(teste=false){
 
 /* processamento DINÂMICO */
 function processar(tickets){
-  agentes = {}; // Zera o estado para recriar com base no payload atual
+  agentes = {}; 
   const filasIgnoradasNomes = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
-    
-    // Ignora as filas indesejadas (incluindo a Direct_Transfer)
     if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
     
-    // Passa o ID pela nossa função melhorada que formata/traduz o nome
     const an = i2n(t.agentIdentity || '');
     if(!an) continue;
 
-    // Se a fila não existe no objeto, cria
-    if(!agentes[fr]) {
-      agentes[fr] = {};
-    }
+    if(!agentes[fr]) { agentes[fr] = {}; }
+    if(!agentes[fr][an]) { agentes[fr][an] = { count: 0, lastTime: null }; }
 
-    // Se o agente não existe na fila, cria
-    if(!agentes[fr][an]) {
-      agentes[fr][an] = { count: 0, lastTime: null };
-    }
-
-    // Incrementa
     agentes[fr][an].count++;
 
-    // Verifica horário
     const ts = t.storageDate || t.closeDate || null;
     if(ts){
       const dt = new Date(ts);
@@ -435,33 +441,18 @@ function fHM(d){
 
 function render(){
   const gd=$('gd'); gd.innerHTML='';
-  let tot=0; const tots={};
-
-  // Obtém as filas descobertas dinamicamente e as ordena alfabeticamente
+  
+  // Obtém as filas descobertas
   const filasDescobertas = Object.keys(agentes).sort();
 
-  // 1. Renderiza a barra de resumo superior dinamicamente
-  const sb = $('summary-bar');
-  let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">—</div></div><div class="dv"></div>`;
-  
-  filasDescobertas.forEach((fila, index) => {
-    const estilo = PALETA[index % PALETA.length];
-    sbHTML += `<div class="sc"><div class="scl">${fila}</div><div class="scv" id="sum-${index}" style="color:${estilo.cor}">—</div></div>`;
-  });
-  
-  sbHTML += `<div class="lu" id="lu">aguardando...</div>`;
-  sb.innerHTML = sbHTML;
+  // 1. Pré-calcula TODOS os totais para garantir que a barra global esteja sempre correta (mesmo com filas ocultas)
+  let totGlobal = 0;
+  const dadosFilas = {};
 
-  // 2. Renderiza os cards das filas
-  filasDescobertas.forEach((fila, index)=>{
-    const estilo = PALETA[index % PALETA.length];
-    const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
+  filasDescobertas.forEach(fila => {
     const atendentesDaFila = Object.keys(agentes[fila]);
-
     const lista_ag = atendentesDaFila.map(a => ({
-      nome: a,
-      count: agentes[fila][a].count,
-      lastTime: agentes[fila][a].lastTime
+      nome: a, count: agentes[fila][a].count, lastTime: agentes[fila][a].lastTime
     }));
 
     // Ordenação
@@ -472,12 +463,41 @@ function render(){
       return b.lastTime - a.lastTime;
     });
 
-    const proximo = ordenados[ordenados.length-1];
-    const ultimo_ag = ordenados.find(a=>a.lastTime);
-    const total = lista_ag.reduce((s,r)=>s+r.count,0);
+    const totalFila = lista_ag.reduce((s,r)=>s+r.count,0);
+    totGlobal += totalFila;
+
+    dadosFilas[fila] = { atendentesDaFila, ordenados, totalFila };
+  });
+
+  // 2. Renderiza a barra de resumo interativa (BOTÕES DE FILTRO)
+  const sb = $('summary-bar');
+  let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">${totGlobal}</div></div><div class="dv"></div>`;
+  
+  filasDescobertas.forEach((fila, index) => {
+    const estilo = PALETA[index % PALETA.length];
+    const isOculta = filasOcultas.has(fila);
+    const classeExtra = isOculta ? " hidden-queue" : "";
     
-    tots[fila] = total;
-    tot += total;
+    // Adicionado o onclick na caixa de resumo
+    sbHTML += `
+      <div class="sc clickable${classeExtra}" onclick="toggleFilaVisibilidade('${fila}')" title="Clique para ocultar ou mostrar esta fila">
+        <div class="scl">${fila} ${isOculta ? '🫥' : ''}</div>
+        <div class="scv" style="color:${estilo.cor}">${dadosFilas[fila].totalFila}</div>
+      </div>`;
+  });
+  
+  sbHTML += `<div class="lu" id="lu">aguardando...</div>`;
+  sb.innerHTML = sbHTML;
+
+  // 3. Renderiza os cards das filas (APENAS SE NÃO ESTIVEREM OCULTAS)
+  filasDescobertas.forEach((fila, index) => {
+    if (filasOcultas.has(fila)) return; // Se a fila foi clicada e escondida, ignora este passo.
+
+    const estilo = PALETA[index % PALETA.length];
+    const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
+    const dados = dadosFilas[fila];
+    const proximo = dados.ordenados[dados.ordenados.length-1];
+    const ultimo_ag = dados.ordenados.find(a=>a.lastTime);
 
     const card=document.createElement('div');
     card.className='cd';
@@ -494,7 +514,7 @@ function render(){
             <div class="qem">${cfg.emoji}</div>
             <div>
               <div class="qn">${fila}</div>
-              <div class="qa">${atendentesDaFila.length} atendente${atendentesDaFila.length!==1?'s':''} · ${total} hoje</div>
+              <div class="qa">${dados.atendentesDaFila.length} atendente${dados.atendentesDaFila.length!==1?'s':''} · ${dados.totalFila} hoje</div>
             </div>
           </div>
           <div class="qt">
@@ -513,7 +533,7 @@ function render(){
 
     const lista_el = card.querySelector(`#rl-${index}`);
 
-    ordenados.forEach((ag,i)=>{
+    dados.ordenados.forEach((ag,i)=>{
       const isProximo = ag.nome===proximo?.nome;
       const isUltimo  = ag.nome===ultimo_ag?.nome && ag.lastTime;
       const prevLast  = prevAgentes[fila]?.[ag.nome]?.lastTime;
@@ -550,12 +570,6 @@ function render(){
     });
   });
 
-  // Atualiza Resumo Superior
-  $('st').textContent=tot;
-  filasDescobertas.forEach((fila, index) => {
-    const el = $(`sum-${index}`);
-    if(el) el.textContent = tots[fila] ?? 0;
-  });
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
 
   // Snapshot para animação
