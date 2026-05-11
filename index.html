@@ -9,37 +9,16 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 
-<!-- ══════════════════════════════════════════════════
-     CONFIGURAÇÃO — edite somente este bloco
-     O TOKEN não fica aqui — é pedido na tela de login
-     e salvo apenas no navegador do usuário.
-═════════════════════════════════════════════════════ -->
 <script>
 const CONFIG = {
-  // Cole aqui a URL do Cloudflare Worker após instalar o worker.js
+  // Cole aqui a URL do Cloudflare Worker
   workerUrl:         "https://snowy-boat-7e2a.gestao-02.workers.dev/",
   contractId:        "techmetria1",
   intervaloSegundos: 20,
-  filaIgnorar:       "Transferência direta",
-  filas: {
-    "Gestão": {
-      cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢",
-      atendentes: ["Miguel Carvalho","Matheus Muniz","Sara Santana",
-                   "Nadiel Coutinho","Nathalia Gomes","Lucas França","Mirella Santos"]
-    },
-    "Comercial": {
-      cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈",
-      atendentes: ["Renatto Fagundes","Juliana Gomes"]
-    },
-    "Financeiro": {
-      cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰",
-      atendentes: ["Nitiele Silva","Gresy Vivian","Camila Patrício","Abraão Nunes"]
-    }
-  }
+  filaIgnorar:       "Transferência direta"
+  // As filas e os atendentes agora são gerados dinamicamente via API!
 };
 </script>
-<!-- ══════════════════════════════════════════════════ -->
-
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -205,14 +184,13 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 </head>
 <body>
 
-<!-- ══════ TELA DE LOGIN ══════ -->
 <div class="lw" id="lw">
   <div class="lc">
     <div class="ll">
       <div class="lli">B</div>
       <div class="llt">
         <div class="t">Ranking de Atendimentos</div>
-        <div class="s">Blip · Techmetria</div>
+        <div class="s">Blip · Integração Dinâmica</div>
       </div>
     </div>
 
@@ -235,7 +213,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </div>
 </div>
 
-<!-- ══════ APP ══════ -->
 <div class="app" id="app">
   <header class="hd">
     <div class="logo">
@@ -255,19 +232,13 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   <div class="pr"><div class="pf" id="pf"></div></div>
 
   <main class="mn">
-    <div class="sb">
-      <div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">—</div></div>
-      <div class="dv"></div>
-      <div class="sc"><div class="scl">Gestão</div><div class="scv" id="sg" style="color:#60a5fa">—</div></div>
-      <div class="sc"><div class="scl">Comercial</div><div class="scv" id="sc2" style="color:#34d399">—</div></div>
-      <div class="sc"><div class="scl">Financeiro</div><div class="scv" id="sf" style="color:#fbbf24">—</div></div>
-      <div class="lu" id="lu">aguardando primeira atualização…</div>
-    </div>
+    <div class="sb" id="summary-bar">
+      </div>
     <div class="gd" id="gd"></div>
   </main>
 
   <footer class="ft">
-    <span>Transferência direta excluída · ClosedAttendant · somente hoje</span>
+    <span>Filas dinâmicas · Transferência direta excluída · Somente hoje</span>
     <span id="fi2">atualização a cada — s</span>
   </footer>
 </div>
@@ -286,15 +257,20 @@ function i2n(id){if(!id)return'';let s=id.split('@')[0];try{s=decodeURIComponent
 function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
 
-/* estado */
+/* Cores e emojis dinâmicos para filas descobertas */
+const PALETA = [
+  { cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢" },
+  { cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈" },
+  { cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰" },
+  { cor: "#a78bfa", corGlow: "rgba(167,139,250,0.25)", emoji: "🚀" },
+  { cor: "#f472b6", corGlow: "rgba(244,114,182,0.25)", emoji: "💡" },
+  { cor: "#38bdf8", corGlow: "rgba(56,189,248,0.25)", emoji: "⚡" }
+];
+
+/* estado dinâmico */
 let TOKEN='';
-// agentes[fila][nome] = { count, lastTime (Date|null) }
-const agentes={};
-Object.entries(CONFIG.filas).forEach(([f,c])=>{
-  agentes[f]={};
-  c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};});
-});
-let prevAgentes={},ultima=null,ticker=null,progT=null;
+let agentes={}; // Estrutura: { "Fila A": { "João": { count: 1, lastTime: Date } } }
+let prevAgentes={}, ultima=null, ticker=null, progT=null;
 
 /* login */
 function toggleVis(){const i=$('tkn');i.type=i.type==='password'?'text':'password';}
@@ -316,14 +292,14 @@ async function fazerLogin(){
   }catch(e){
     TOKEN='';btn.disabled=false;btn.textContent='Entrar no painel';
     inp.classList.add('err');
-    err.innerHTML=`<b>Falha ao conectar:</b> ${e.message}<br><br>Verifique se a chave está correta e tem permissão de Atendimento Humano.`;
+    err.innerHTML=`<b>Falha ao conectar:</b> ${e.message}<br><br>Verifique se a chave está correta.`;
     err.classList.add('show');
   }
 }
 
 function fazerLogout(){
   localStorage.removeItem(LS);TOKEN='';
-  if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;
+  if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
@@ -339,7 +315,7 @@ function abrirApp(){
 /* api */
 async function chamadaWorker(body){
   const wu=(CONFIG.workerUrl||'').trim();
-  if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no index.html (veja instruções)');
+  if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no script');
   const r=await fetch(wu,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Contract-Id':CONFIG.contractId||''},body:JSON.stringify(body)});
   if(!r.ok) throw new Error('Worker HTTP '+r.status);
   const d=await r.json();
@@ -353,7 +329,6 @@ async function buscar(teste=false){
     const d=await chamadaWorker(body);
     return d?.resource?.items||[];
   }
-  // Blip limita $take=100 — busca todas as páginas
   const PAGE=100;
   let skip=0, todos=[], continua=true;
   while(continua){
@@ -364,75 +339,103 @@ async function buscar(teste=false){
     const d=await chamadaWorker(body);
     const items=d?.resource?.items||[];
     todos=todos.concat(items);
-    if(items.length<PAGE) continua=false; // última página
+    if(items.length<PAGE) continua=false; 
     else skip+=PAGE;
-    if(skip>2000) break; // segurança: máximo 2000 tickets por dia
+    if(skip>2000) break;
   }
   return todos;
 }
 
-/* processamento */
+/* processamento DINÂMICO */
 function processar(tickets){
-  // Zera
-  Object.entries(CONFIG.filas).forEach(([f,c])=>
-    c.atendentes.forEach(a=>{agentes[f][a]={count:0,lastTime:null};}));
-  const ig=norm(CONFIG.filaIgnorar);
+  agentes = {}; // Zera o estado para recriar com base no payload atual
+  const ig = norm(CONFIG.filaIgnorar);
+
   for(const t of tickets){
-    const fr=(t.team||'').trim();
-    if(!fr||norm(fr)===ig) continue;
-    const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));
-    if(!fk) continue;
-    const an=i2n(t.agentIdentity||'');
+    const fr = (t.team || 'Sem Fila').trim();
+    if(!fr || norm(fr) === ig) continue;
+    
+    const an = i2n(t.agentIdentity || '');
     if(!an) continue;
-    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
-    if(!ak) continue;
-    // Incrementa contagem
-    agentes[fk][ak].count++;
-    // Registra o horário mais recente de atendimento
-    const ts=t.storageDate||t.closeDate||null;
+
+    // Se a fila não existe no objeto, cria
+    if(!agentes[fr]) {
+      agentes[fr] = {};
+    }
+
+    // Se o agente não existe na fila, cria
+    if(!agentes[fr][an]) {
+      agentes[fr][an] = { count: 0, lastTime: null };
+    }
+
+    // Incrementa
+    agentes[fr][an].count++;
+
+    // Verifica horário
+    const ts = t.storageDate || t.closeDate || null;
     if(ts){
-      const dt=new Date(ts);
-      if(!agentes[fk][ak].lastTime || dt > agentes[fk][ak].lastTime){
-        agentes[fk][ak].lastTime=dt;
+      const dt = new Date(ts);
+      if(!agentes[fr][an].lastTime || dt > agentes[fr][an].lastTime){
+        agentes[fr][an].lastTime = dt;
       }
     }
   }
 }
 
 /* render */
-function fHM(d){ // formata HH:MM
+function fHM(d){
   if(!d) return null;
   return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
 
 function render(){
-  const gd=$('gd');gd.innerHTML='';
-  let tot=0;const tots={};
+  const gd=$('gd'); gd.innerHTML='';
+  let tot=0; const tots={};
 
-  Object.entries(CONFIG.filas).forEach(([fila,cfg])=>{
-    // Monta lista de agentes com dados
-    const lista_ag=cfg.atendentes.map(a=>({
-      nome:a,
-      count:agentes[fila][a].count,
-      lastTime:agentes[fila][a].lastTime
+  // Obtém as filas descobertas dinamicamente e as ordena alfabeticamente (opcional)
+  const filasDescobertas = Object.keys(agentes).sort();
+
+  // 1. Renderiza a barra de resumo superior dinamicamente
+  const sb = $('summary-bar');
+  let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">—</div></div><div class="dv"></div>`;
+  
+  filasDescobertas.forEach((fila, index) => {
+    const estilo = PALETA[index % PALETA.length];
+    sbHTML += `<div class="sc"><div class="scl">${fila}</div><div class="scv" id="sum-${index}" style="color:${estilo.cor}">—</div></div>`;
+  });
+  
+  sbHTML += `<div class="lu" id="lu">aguardando...</div>`;
+  sb.innerHTML = sbHTML;
+
+  // 2. Renderiza os cards das filas
+  filasDescobertas.forEach((fila, index)=>{
+    const estilo = PALETA[index % PALETA.length];
+    const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
+    const atendentesDaFila = Object.keys(agentes[fila]);
+
+    const lista_ag = atendentesDaFila.map(a => ({
+      nome: a,
+      count: agentes[fila][a].count,
+      lastTime: agentes[fila][a].lastTime
     }));
 
-    // Ordena: quem atendeu mais recentemente primeiro; sem atendimento vai pro final
-    const ordenados=[...lista_ag].sort((a,b)=>{
+    // Ordenação
+    const ordenados = [...lista_ag].sort((a,b)=>{
       if(!a.lastTime && !b.lastTime) return 0;
-      if(!a.lastTime) return 1;   // sem atendimento → fim
+      if(!a.lastTime) return 1;
       if(!b.lastTime) return -1;
-      return b.lastTime - a.lastTime; // mais recente primeiro
+      return b.lastTime - a.lastTime;
     });
 
-    // PRÓXIMO = último da lista (quem está há mais tempo sem atender ou não atendeu)
-    const proximo=ordenados[ordenados.length-1];
-    // ÚLTIMO = primeiro da lista (quem atendeu mais recentemente)
-    const ultimo_ag=ordenados.find(a=>a.lastTime);
+    const proximo = ordenados[ordenados.length-1];
+    const ultimo_ag = ordenados.find(a=>a.lastTime);
+    const total = lista_ag.reduce((s,r)=>s+r.count,0);
+    
+    tots[fila] = total;
+    tot += total;
 
-    const total=lista_ag.reduce((s,r)=>s+r.count,0);
-    tots[fila]=total;tot+=total;
-    const maxT=Math.max(...Object.values(tots),1);
+    // Calcular o máximo global para a barra de progresso (opcional, aqui usa do próprio card para simplificar)
+    const maxT = Math.max(total, 1);
 
     const card=document.createElement('div');
     card.className='cd';
@@ -449,7 +452,7 @@ function render(){
             <div class="qem">${cfg.emoji}</div>
             <div>
               <div class="qn">${fila}</div>
-              <div class="qa">${cfg.atendentes.length} atendente${cfg.atendentes.length!==1?'s':''} · ${total} hoje</div>
+              <div class="qa">${atendentesDaFila.length} atendente${atendentesDaFila.length!==1?'s':''} · ${total} hoje</div>
             </div>
           </div>
           <div class="qt">
@@ -457,16 +460,16 @@ function render(){
             <div class="qlbl">próximo</div>
           </div>
         </div>
-        <div class="qbt"><div class="qbf" style="width:${Math.round((total/maxT)*100)}%"></div></div>
+        <div class="qbt"><div class="qbf" style="width:100%"></div></div>
       </div>
-      <div class="rl" id="rl-${fila.replace(/\s/g,'_')}"></div>
+      <div class="rl" id="rl-${index}"></div>
       <div class="cdf">
-        <span>⏱ último: <span class="fl2">${ultimo_ag?ultimo_ag.nome.split(' ')[0]+' às '+fHM(ultimo_ag.lastTime):'nenhum hoje'}</span></span>
+        <span>⏱ último: <span class="fl2">${ultimo_ag?ultimo_ag.nome.split(' ')[0]+' às '+fHM(ultimo_ag.lastTime):'nenhum'}</span></span>
         <span>${ultima?fH(ultima):'—'}</span>
       </div>`;
     gd.appendChild(card);
 
-    const lista_el=card.querySelector(`#rl-${fila.replace(/\s/g,'_')}`);
+    const lista_el = card.querySelector(`#rl-${index}`);
 
     ordenados.forEach((ag,i)=>{
       const isProximo = ag.nome===proximo?.nome;
@@ -505,16 +508,21 @@ function render(){
     });
   });
 
+  // Atualiza Resumo Superior
   $('st').textContent=tot;
-  [['Gestão','sg'],['Comercial','sc2'],['Financeiro','sf']].forEach(([f,id])=>{
-    const el=$(id);if(el)el.textContent=tots[f]??0;
+  filasDescobertas.forEach((fila, index) => {
+    const el = $(`sum-${index}`);
+    if(el) el.textContent = tots[fila] ?? 0;
   });
   if(ultima)$('lu').textContent=`atualizado ${fH(ultima)}`;
 
-  // ✅ CORREÇÃO: snapshot único e correto — removido o bloco duplicado com "cfg" indefinido
-  Object.entries(CONFIG.filas).forEach(([f,c])=>{
-    prevAgentes[f]={};
-    c.atendentes.forEach(a=>{prevAgentes[f][a]={...agentes[f][a]};});
+  // Snapshot para animação de quem acabou de atender
+  prevAgentes = {};
+  filasDescobertas.forEach(f => {
+    prevAgentes[f] = {};
+    Object.keys(agentes[f]).forEach(a => {
+      prevAgentes[f][a] = {...agentes[f][a]};
+    });
   });
 }
 
