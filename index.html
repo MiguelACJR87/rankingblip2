@@ -16,25 +16,14 @@
 ═════════════════════════════════════════════════════ -->
 <script>
 const CONFIG = {
-  // Cole aqui a URL do Cloudflare Worker após instalar o worker.js
-  workerUrl:         "https://snowy-boat-7e2a.gestao-02.workers.dev/",
   contractId:        "techmetria1",
   intervaloSegundos: 20,
   filaIgnorar:       "Transferência direta",
+  /* atendentes são carregados automaticamente da API do Blip */
   filas: {
-    "Gestão": {
-      cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢",
-      atendentes: ["Miguel Carvalho","Matheus Muniz","Sara Santana",
-                   "Nadiel Coutinho","Nathalia Gomes","Lucas França","Mirella Santos"]
-    },
-    "Comercial": {
-      cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈",
-      atendentes: ["Renatto Fagundes","Juliana Gomes"]
-    },
-    "Financeiro": {
-      cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)", emoji: "💰",
-      atendentes: ["Nitiele Silva","Gresy Vivian","Camila Patrício","Abraão Nunes"]
-    }
+    "Gestão":    { cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)",  emoji: "🏢" },
+    "Comercial": { cor: "#34d399", corGlow: "rgba(52,211,153,0.25)",  emoji: "📈" },
+    "Financeiro":{ cor: "#fbbf24", corGlow: "rgba(251,191,36,0.25)",  emoji: "💰" }
   }
 };
 </script>
@@ -246,7 +235,7 @@ function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric'
 /* estado */
 let TOKEN='';
 const cnts={};
-Object.entries(CONFIG.filas).forEach(([f,c])=>{cnts[f]={};c.atendentes.forEach(a=>{cnts[f][a]=0;});});
+Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
 let prev={},ultima=null,ticker=null,progT=null;
 
 /* login */
@@ -265,7 +254,7 @@ async function fazerLogin(){
   try{
     await buscar(true);
     localStorage.setItem(LS,TOKEN);
-    abrirApp();
+    await abrirApp();
   }catch(e){
     TOKEN='';btn.disabled=false;btn.textContent='Entrar no painel';
     inp.classList.add('err');
@@ -280,9 +269,10 @@ function fazerLogout(){
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
-function abrirApp(){
+async function abrirApp(){
   $('lw').classList.add('hidden');$('app').classList.add('visible');
   $('fi2').textContent=`atualização a cada ${CONFIG.intervaloSegundos}s`;
+  await carregarAtendentes();
   iniciarCiclo();
 }
 
@@ -290,56 +280,116 @@ function abrirApp(){
 (()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
 
 /* api */
-function buildUri(teste){
-  if(teste) return '/tickets?$closed=true&$skip=0&$take=1';
+function blipUrl(){return CONFIG.contractId?`https://${CONFIG.contractId}.http.msging.net/commands`:'https://http.msging.net/commands';}
+function buildUri(skip=0){
   const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
-  const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
-  return '/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip=0&$take=500';
+  const f=[`closeDate ge datetimeoffset'${ini2.toISOString()}'`,`closeDate le datetimeoffset'${agora.toISOString()}'`,`(status eq 'ClosedAttendant' or status eq 'ClosedAttended')`].join(' and ');
+  return `/tickets/history?$filter=${encodeURIComponent(f)}&$skip=${skip}&$take=100&$orderby=closeDate asc`;
 }
-async function chamadaWorker(body){
-  const wu=(CONFIG.workerUrl||'').trim();
-  if(!wu||wu==='COLE_URL_DO_WORKER_AQUI') throw new Error('Configure WORKER_URL no index.html (veja instruções)');
-  const r=await fetch(wu,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Contract-Id':CONFIG.contractId||''},body:JSON.stringify(body)});
-  if(!r.ok) throw new Error('Worker HTTP '+r.status);
-  const d=await r.json();
-  if(d?.status==='failure') throw new Error(d.reason?.description||'Blip: failure');
+/* ─────────────────────────────────────────────────────────────
+   WORKER URL — cole aqui a URL do seu Cloudflare Worker após o deploy
+   Ex: 'https://blip-proxy.seunome.workers.dev'
+   Deixe em branco ('') para pular e usar os proxies públicos de fallback.
+───────────────────────────────────────────────────────────── */
+const WORKER_URL = 'https://throbbing-truth-21fb.gestao-02.workers.dev';
+
+const PROXIES = [
+  /* 1º — Worker dedicado (encaminha Authorization sem bloqueio) */
+  ...(WORKER_URL ? [u => `${WORKER_URL}?url=${encodeURIComponent(u)}`] : []),
+  /* Fallbacks públicos (podem falhar com Authorization) */
+  u=>'https://corsproxy.io/?'+encodeURIComponent(u),
+  u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
+  u=>'https://thingproxy.freeboard.io/fetch/'+u,
+];
+async function chamada(target,body,pfn){
+  const url=pfn?pfn(target):target;
+  const r=await fetch(url,{method:'POST',headers:{'Authorization':TOKEN,'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  let d=await r.json();
+  if(d.contents)d=JSON.parse(d.contents);
+  if(d.status==='failure')throw new Error(d.reason?.description||'Blip failure');
   return d;
+}
+async function chamarBlip(bodyFn){
+  const t=blipUrl();let le;
+  const body=bodyFn();
+  try{return await chamada(t,body);}catch(e){le=e;}
+  for(const p of PROXIES){try{return await chamada(t,bodyFn(),p);}catch(e){le=e;console.warn('proxy falhou',e.message);}}
+  throw new Error(le?.message||'Falha em todos os proxies');
 }
 async function buscar(teste=false){
   if(teste){
-    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets?$closed=true&$skip=0&$take=1'};
-    const d=await chamadaWorker(body);
+    const d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/tickets/history?$skip=0&$take=1'}));
     return d?.resource?.items||[];
   }
-  // Blip limita $take=100 — busca todas as páginas
-  const PAGE=100;
-  let skip=0, todos=[], continua=true;
-  while(continua){
-    const agora=new Date(),ini2=new Date(agora);ini2.setHours(0,0,0,0);
-    const f='storageDate ge datetimeoffset\''+ini2.toISOString()+'\' and storageDate lt datetimeoffset\''+agora.toISOString()+'\'';
-    const uri='/tickets?$filter='+encodeURIComponent(f)+'&$closed=true&$skip='+skip+'&$take='+PAGE;
-    const body={id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri};
-    const d=await chamadaWorker(body);
+  const todos=[];let skip=0;
+  while(true){
+    const s=skip;
+    const d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:buildUri(s)}));
     const items=d?.resource?.items||[];
-    todos=todos.concat(items);
-    if(items.length<PAGE) continua=false; // última página
-    else skip+=PAGE;
-    if(skip>2000) break; // segurança: máximo 2000 tickets por dia
+    todos.push(...items);
+    if(items.length<100)break;
+    skip+=100;
   }
   return todos;
 }
 
 /* processamento */
 function processar(tickets){
+  /* zera contagens mantendo a lista de atendentes */
   Object.entries(CONFIG.filas).forEach(([f,c])=>c.atendentes.forEach(a=>{cnts[f][a]=0;}));
   const ig=norm(CONFIG.filaIgnorar);
   for(const t of tickets){
     const fr=(t.team||'').trim();if(!fr||norm(fr)===ig)continue;
     const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(fr));if(!fk)continue;
-    const an=i2n(t.agentIdentity||'');if(!an)continue;
-    const ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));if(!ak)continue;
-    cnts[fk][ak]++;
+    /* tenta nome direto ou converte identidade */
+    const an=(t.agentName||i2n(t.agentIdentity||'')).trim();if(!an)continue;
+    /* busca correspondência normalizada */
+    let ak=CONFIG.filas[fk].atendentes.find(a=>norm(a)===norm(an));
+    if(!ak){
+      /* atendente novo encontrado no ticket — adiciona dinamicamente */
+      CONFIG.filas[fk].atendentes.push(an);
+      cnts[fk][an]=0;
+      ak=an;
+    }
+    cnts[fk][ak]=(cnts[fk][ak]||0)+1;
   }
+}
+
+/* carrega atendentes da API do Blip e popula CONFIG.filas[*].atendentes */
+async function carregarAtendentes(){
+  Object.entries(CONFIG.filas).forEach(([f,c])=>{c.atendentes=[];cnts[f]={};});
+  let skip=0;
+  while(true){
+    const s=skip;
+    let d;
+    try{
+      d=await chamarBlip(()=>({id:uuid(),to:'postmaster@desk.msging.net',method:'get',
+        uri:`/attendants?$skip=${s}&$take=100`}));
+    }catch(e){console.warn('carregarAtendentes falhou:',e.message);break;}
+    const items=d?.resource?.items||[];
+    for(const att of items){
+      /* Blip pode retornar fullName, name ou derivar da identity */
+      const nome=(att.fullName||att.name||i2n(att.identity||att.agentIdentity||'')).trim();
+      if(!nome)continue;
+      /* teams pode ser array de strings ou array de objetos {name} */
+      const teams=att.teams||[];
+      for(const t of (Array.isArray(teams)?teams:[teams])){
+        const tn=typeof t==='string'?t:(t?.name||t?.id||'');
+        const fk=Object.keys(CONFIG.filas).find(f=>norm(f)===norm(tn));
+        if(!fk)continue;
+        if(!CONFIG.filas[fk].atendentes.includes(nome)){
+          CONFIG.filas[fk].atendentes.push(nome);
+          cnts[fk][nome]=0;
+        }
+      }
+    }
+    if(items.length<100)break;
+    skip+=100;
+  }
+  console.log('Atendentes carregados:',Object.fromEntries(
+    Object.entries(CONFIG.filas).map(([f,c])=>[f,c.atendentes])
+  ));
 }
 
 /* render */
