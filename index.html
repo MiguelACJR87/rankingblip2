@@ -11,12 +11,27 @@
 
 <script>
 const CONFIG = {
-  // Cole aqui a URL do Cloudflare Worker
+  // Sua URL do Worker
   workerUrl:         "https://snowy-boat-7e2a.gestao-02.workers.dev/",
   contractId:        "techmetria1",
   intervaloSegundos: 20,
-  filaIgnorar:       "Transferência direta"
-  // As filas e os atendentes agora são gerados dinamicamente via API!
+  
+  // Filas que o painel deve fingir que não existem
+  filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
+
+  // ──────────────────────────────────────────────────
+  // DE-PARA DE ATENDENTES
+  // Como a API só traz o login (ex: "gestao_01"), 
+  // coloque o login exato à esquerda e o Nome à direita.
+  // ──────────────────────────────────────────────────
+  nomesAtendentes: {
+    "gestao.01": "Miguel Carvalho",
+    "gestao.02": "Matheus Muniz",
+    "gestao.03": "Sara Santana",
+    "financeiro.01": "Nitiele Silva",
+    "comercial.01": "Renatto Fagundes"
+    // Adicione os demais logins reais que aparecem na sua API aqui...
+  }
 };
 </script>
 <style>
@@ -253,7 +268,22 @@ const $=id=>document.getElementById(id);
 function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function ini(n){return n.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase();}
 function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
-function i2n(id){if(!id)return'';let s=id.split('@')[0];try{s=decodeURIComponent(s);}catch(e){}return s.split('@')[0].replace(/\./g,' ').trim();}
+
+// EXTROU O NOME DO AGENTE
+function i2n(id){
+  if(!id) return '';
+  let s = id.split('@')[0];
+  try { s = decodeURIComponent(s); } catch(e){}
+  
+  // 1. Verifica no "Dicionário" (De-Para) do CONFIG
+  if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) {
+    return CONFIG.nomesAtendentes[s];
+  }
+  
+  // 2. Se não existir no dicionário, formata o login (remove pontos e underlines)
+  return s.replace(/[\._]/g,' ').trim();
+}
+
 function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
 
@@ -349,11 +379,13 @@ async function buscar(teste=false){
 /* processamento DINÂMICO */
 function processar(tickets){
   agentes = {}; // Zera o estado para recriar com base no payload atual
-  const ig = norm(CONFIG.filaIgnorar);
+  const filasIgnoradasNomes = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
-    if(!fr || norm(fr) === ig) continue;
+    
+    // Se a fila estiver vazia ou constar na lista de ignoradas, pula pro próximo ticket
+    if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
     
     const an = i2n(t.agentIdentity || '');
     if(!an) continue;
@@ -392,7 +424,7 @@ function render(){
   const gd=$('gd'); gd.innerHTML='';
   let tot=0; const tots={};
 
-  // Obtém as filas descobertas dinamicamente e as ordena alfabeticamente (opcional)
+  // Obtém as filas descobertas dinamicamente e as ordena alfabeticamente
   const filasDescobertas = Object.keys(agentes).sort();
 
   // 1. Renderiza a barra de resumo superior dinamicamente
@@ -433,9 +465,6 @@ function render(){
     
     tots[fila] = total;
     tot += total;
-
-    // Calcular o máximo global para a barra de progresso (opcional, aqui usa do próprio card para simplificar)
-    const maxT = Math.max(total, 1);
 
     const card=document.createElement('div');
     card.className='cd';
