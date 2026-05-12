@@ -168,7 +168,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 .rr.bump{animation:bump .8s ease forwards;}
 @keyframes bump{0%{background:transparent;}20%{background:rgba(52,211,153,.1);}100%{background:transparent;}}
 
-/* PRÓXIMO NA LISTA (Apenas contorno verde, animação removida daqui) */
+/* PRÓXIMO NA LISTA */
 .rr.proximo{
   background:rgba(52,211,153,.07);
   border:1px solid rgba(52,211,153,.25);
@@ -247,30 +247,20 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 }
 
 @media (max-width: 650px) {
-  /* Cabeçalho centralizado e empilhado */
   .hd { height: auto; flex-direction: column; padding: 16px; gap: 14px; text-align: center; }
   .logo { width: 100%; justify-content: center; }
   .hr { width: 100%; justify-content: center; flex-wrap: wrap; gap: 12px; }
-  
-  /* Botões de resumo divididos */
   .sb { justify-content: center; gap: 6px; }
   .sc { flex: 1 1 calc(33% - 6px); padding: 8px; text-align: center; }
-  .dv { display: none; } /* Oculta a barrinha vertical de separação */
+  .dv { display: none; } 
   .lu { margin-left: 0; width: 100%; text-align: center; margin-top: 8px; }
-  
-  /* Rodapés */
   .ft { flex-direction: column; text-align: center; gap: 10px; }
   .cdf { flex-direction: column; text-align: center; gap: 8px; }
-  
-  /* Ajuste no Login para telas pequenas */
   .lc { padding: 28px 24px; margin: 0 12px; }
 }
 
 @media (max-width: 480px) {
-  /* Em telas muito pequenas (Mobile em pé), os cards de resumo ficam de 2 em 2 */
   .sc { flex: 1 1 calc(50% - 6px); }
-  
-  /* O Header do Card (Título da Fila) fica centralizado */
   .cht { flex-direction: column; align-items: center; text-align: center; gap: 16px; }
   .qnw { flex-direction: column; }
   .qt { text-align: center; width: 100%; }
@@ -343,7 +333,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 <script>
 const LS='blip_token_v1';
 const LS_TIMER='blip_offline_timers_v1';
-const LS_HISTORY='blip_history_v1'; // NOVO: Chave para salvar a ordem de ontem
+const LS_HISTORY='blip_history_v1';
 const $=id=>document.getElementById(id);
 
 /* utilitários */
@@ -366,6 +356,17 @@ function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-dig
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
 function fHM(d){if(!d) return null; return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
+// ---- FUNÇÃO DE VOZ (TTS) ----
+function falar(texto) {
+  if ('speechSynthesis' in window) {
+    const utterance = new SpeechSynthesisUtterance(texto);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 1.0;
+    window.speechSynthesis.speak(utterance);
+  }
+}
+// -----------------------------
+
 /* Cores e emojis dinâmicos para filas descobertas */
 const PALETA = [
   { cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢" },
@@ -381,6 +382,7 @@ let TOKEN='';
 let agentes={}; 
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 let filasOcultas = new Set();
+let prevProximos = {}; // NOVO: Guarda quem foi o último "próximo" anunciado
 
 // Carrega os cronômetros salvos e o Histórico de Ontem
 let tempoOfflineCronometro = {};
@@ -413,6 +415,13 @@ async function fazerLogin(){
   btn.disabled=true;btn.innerHTML='<span class="ls2"></span>Verificando…';
   TOKEN=val;
   try{
+    // Silenciosamente destrava o áudio do navegador com o primeiro clique
+    if ('speechSynthesis' in window) {
+      let msg = new SpeechSynthesisUtterance('');
+      msg.volume = 0;
+      window.speechSynthesis.speak(msg);
+    }
+
     await buscar(true);
     localStorage.setItem(LS,TOKEN);
     abrirApp();
@@ -427,10 +436,9 @@ async function fazerLogin(){
 function fazerLogout(){
   localStorage.removeItem(LS);
   localStorage.removeItem(LS_TIMER);
-  // O Histórico não é removido no logout por segurança, apenas com limpeza de cache
   TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
-  filasOcultas.clear(); tempoOfflineCronometro = {};
+  filasOcultas.clear(); tempoOfflineCronometro = {}; prevProximos = {};
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
@@ -549,7 +557,7 @@ function processar(tickets){
 
   localStorage.setItem(LS_HISTORY, JSON.stringify(historicoAgentes));
 
-  // C. Injeta a ordem de ontem para quem ainda não atendeu hoje (count continuará 0)
+  // C. Injeta a ordem de ontem para quem ainda não atendeu hoje
   Object.keys(historicoAgentes).forEach(fila => {
     if(!agentes[fila]) agentes[fila] = {};
     Object.keys(historicoAgentes[fila]).forEach(nome => {
@@ -600,6 +608,9 @@ function render(){
   const dadosFilas = {};
   const agora = Date.now();
   const limiteDesaparecimentoMs = CONFIG.minutosOfflineTolerancia * 60 * 1000;
+  
+  // Descobre exatamente quantas filas estão na tela
+  const filasVisiveis = filasDescobertas.filter(f => !filasOcultas.has(f));
 
   filasDescobertas.forEach(fila => {
     const atendentesDaFila = Object.keys(agentes[fila]);
@@ -646,13 +657,28 @@ function render(){
 
   // Renderiza Cards
   filasDescobertas.forEach((fila, index) => {
-    if (filasOcultas.has(fila)) return; 
-
-    const estilo = PALETA[index % PALETA.length];
-    const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
+    
     const dados = dadosFilas[fila];
     const proximo = dados.ordenados[dados.ordenados.length-1];
     const ultimo_ag = dados.ordenados.find(a=>a.lastTime);
+    const nomeProximoAtual = proximo ? proximo.nome : null;
+
+    // ---- LÓGICA DE VOZ INTELIGENTE ----
+    // Só fala se: Tem apenas 1 fila na tela E o "próximo" dessa fila não é o mesmo de antes
+    if (filasVisiveis.length === 1 && filasVisiveis[0] === fila) {
+      if (nomeProximoAtual && prevProximos[fila] !== undefined && nomeProximoAtual !== prevProximos[fila]) {
+        const primeiroNome = nomeProximoAtual.split(' ')[0];
+        falar(`${primeiroNome} será o próximo a atender.`);
+      }
+    }
+    // Grava quem é o próximo atual da fila (mesmo se oculta, para não falar atrasado depois)
+    prevProximos[fila] = nomeProximoAtual;
+    // -----------------------------------
+
+    if (filasOcultas.has(fila)) return; // Se está oculta, para o desenho por aqui
+
+    const estilo = PALETA[index % PALETA.length];
+    const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
 
     const card=document.createElement('div');
     card.className='cd';
