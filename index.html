@@ -17,6 +17,11 @@ const CONFIG = {
   
   // Tempo de tolerância em MINUTOS antes de esconder o atendente offline
   minutosOfflineTolerancia: 2,
+
+  // --- CONFIGURAÇÕES DA VOZ (TTS) ---
+  vozVelocidade: 1.0, // 1.0 é o normal. 1.2 é mais rápido, 0.8 é devagar.
+  vozTom: 1.1,        // 1.1 ajuda a deixar a voz um pouco mais suave/feminina.
+  // ----------------------------------
   
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
 
@@ -238,7 +243,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* =========================================================================
-   CEREJA DO BOLO: REGRAS DE RESPONSIVIDADE (MEDIA QUERIES)
+   REGRAS DE RESPONSIVIDADE (MEDIA QUERIES)
    ========================================================================= */
 @media (max-width: 850px) {
   .hd { padding: 0 16px; }
@@ -356,16 +361,43 @@ function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-dig
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
 function fHM(d){if(!d) return null; return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
-// ---- FUNÇÃO DE VOZ (TTS) ----
+// ---- FUNÇÃO DE VOZ (TTS) FORÇANDO VOZ FEMININA ----
 function falar(texto) {
   if ('speechSynthesis' in window) {
     const utterance = new SpeechSynthesisUtterance(texto);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.0;
+    
+    // Aplica os valores do CONFIG
+    utterance.rate = CONFIG.vozVelocidade || 1.0;
+    utterance.pitch = CONFIG.vozTom || 1.0; // Um pitch levemente maior (ex: 1.1) deixa a voz mais feminina
+
+    // Busca todas as vozes instaladas no computador/navegador
+    const vozes = window.speechSynthesis.getVoices();
+    const vozesBR = vozes.filter(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+
+    if (vozesBR.length > 0) {
+      // 1. Exclui vozes masculinas conhecidas do Windows (Daniel, Antonio, etc)
+      const vozesFemininas = vozesBR.filter(v => !v.name.includes('Daniel') && !v.name.includes('Antonio'));
+
+      // 2. Caça especificamente nomes de vozes femininas de alta qualidade
+      const vozPreferida = vozesFemininas.find(v => 
+        v.name.includes('Google') || 
+        v.name.includes('Maria') || 
+        v.name.includes('Francisca') ||
+        v.name.includes('Vitoria')
+      ) || vozesFemininas[0] || vozesBR[0]; // Se não achar nenhuma específica, pega a primeira feminina disponível
+
+      utterance.voice = vozPreferida;
+    }
+
     window.speechSynthesis.speak(utterance);
   }
 }
-// -----------------------------
+// Carregar vozes do sistema antecipadamente (corrige bug no Chrome)
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+// -----------------------------------------------------------
 
 /* Cores e emojis dinâmicos para filas descobertas */
 const PALETA = [
@@ -382,7 +414,7 @@ let TOKEN='';
 let agentes={}; 
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 let filasOcultas = new Set();
-let prevProximos = {}; // NOVO: Guarda quem foi o último "próximo" anunciado
+let prevProximos = {}; 
 
 // Carrega os cronômetros salvos e o Histórico de Ontem
 let tempoOfflineCronometro = {};
@@ -415,7 +447,6 @@ async function fazerLogin(){
   btn.disabled=true;btn.innerHTML='<span class="ls2"></span>Verificando…';
   TOKEN=val;
   try{
-    // Silenciosamente destrava o áudio do navegador com o primeiro clique
     if ('speechSynthesis' in window) {
       let msg = new SpeechSynthesisUtterance('');
       msg.volume = 0;
@@ -609,7 +640,6 @@ function render(){
   const agora = Date.now();
   const limiteDesaparecimentoMs = CONFIG.minutosOfflineTolerancia * 60 * 1000;
   
-  // Descobre exatamente quantas filas estão na tela
   const filasVisiveis = filasDescobertas.filter(f => !filasOcultas.has(f));
 
   filasDescobertas.forEach(fila => {
@@ -663,19 +693,15 @@ function render(){
     const ultimo_ag = dados.ordenados.find(a=>a.lastTime);
     const nomeProximoAtual = proximo ? proximo.nome : null;
 
-    // ---- LÓGICA DE VOZ INTELIGENTE ----
-    // Só fala se: Tem apenas 1 fila na tela E o "próximo" dessa fila não é o mesmo de antes
     if (filasVisiveis.length === 1 && filasVisiveis[0] === fila) {
       if (nomeProximoAtual && prevProximos[fila] !== undefined && nomeProximoAtual !== prevProximos[fila]) {
         const primeiroNome = nomeProximoAtual.split(' ')[0];
         falar(`${primeiroNome} será o próximo a atender.`);
       }
     }
-    // Grava quem é o próximo atual da fila (mesmo se oculta, para não falar atrasado depois)
     prevProximos[fila] = nomeProximoAtual;
-    // -----------------------------------
 
-    if (filasOcultas.has(fila)) return; // Se está oculta, para o desenho por aqui
+    if (filasOcultas.has(fila)) return; 
 
     const estilo = PALETA[index % PALETA.length];
     const cfg = { cor: estilo.cor, corGlow: estilo.corGlow, emoji: estilo.emoji };
