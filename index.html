@@ -20,7 +20,7 @@ const CONFIG = {
 
   // --- CONFIGURAÇÕES DA VOZ (TTS) ---
   vozVelocidade: 1.0, 
-  vozTom: 1.1, // 1.1 ajuda a deixar a voz um pouco mais suave
+  vozTom: 1.1,
   // ----------------------------------
   
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
@@ -267,7 +267,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </div>
 </div>
 
-<!-- NOVO MODAL PARA EDIÇÃO DE NOMES -->
 <div class="lw hidden" id="nw">
   <div class="lc">
     <div class="lh">✏️ Editar Atendente</div>
@@ -289,7 +288,6 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
     </div>
   </div>
 </div>
-<!-- --------------------------------- -->
 
 <div class="app" id="app">
   <header class="hd">
@@ -329,8 +327,8 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
 const LS = 'blip_token_v1';
 const LS_TIMER = 'blip_offline_timers_v1';
 const LS_HISTORY = 'blip_history_v1';
-const LS_VOICE = 'blip_voice_pref_v1'; // CHAVE PARA SALVAR A VOZ ESCOLHIDA
-const LS_NOMES = 'blip_nomes_custom_v1'; // CHAVE PARA SALVAR OS NOMES EDITADOS
+const LS_VOICE = 'blip_voice_pref_v1'; 
+const LS_NOMES = 'blip_nomes_custom_v1'; 
 
 const $=id=>document.getElementById(id);
 
@@ -346,15 +344,12 @@ function i2n(id){
   try { s = decodeURIComponent(s); } catch(e){}
   s = s.replace('@desk.msging.net', '').replace('@blip.ai', '').trim();
   
-  // 1. Verifica se há um nome editado salvo no navegador
   let nomesCustomizados = {};
   try { nomesCustomizados = JSON.parse(localStorage.getItem(LS_NOMES)) || {}; } catch(e){}
   if (nomesCustomizados[s]) return nomesCustomizados[s];
 
-  // 2. Verifica a configuração original (CONFIG.nomesAtendentes)
   if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) return CONFIG.nomesAtendentes[s];
   
-  // 3. Fallback dinâmico: corta o email e capitaliza (ex: joao.silva => Joao Silva)
   let prefix = s.split('@')[0].replace(/[\._\-]/g, ' ').trim();
   return prefix.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
@@ -362,7 +357,6 @@ function i2n(id){
 function fH(d){return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 function fD(d){return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});}
 function fHM(d){if(!d) return null; return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
-
 
 /* =========================================================================
    LÓGICA DE VOZ (TTS) COM PAINEL DE CONFIGURAÇÃO
@@ -379,12 +373,10 @@ function falar(texto) {
       const savedVoiceName = localStorage.getItem(LS_VOICE);
       let vozPreferida = null;
 
-      // 1. Tenta pegar a que o usuário salvou no painel
       if (savedVoiceName) {
         vozPreferida = vozes.find(v => v.name === savedVoiceName);
       }
       
-      // 2. Se não tem salva (ou se ele trocou de PC/Navegador), busca a melhor padrão feminina
       if (!vozPreferida) {
         const vozesBR = vozes.filter(v => v.lang.includes('pt'));
         vozPreferida = vozesBR.find(v => v.name.includes('Google')) || 
@@ -399,13 +391,11 @@ function falar(texto) {
   }
 }
 
-// Lógica da Janela de Configuração
 function carregarVozesSelect() {
   const vozes = window.speechSynthesis.getVoices();
   const select = $('voice-select');
   select.innerHTML = '';
   
-  // Lista prioritária de PT-BR
   const vozesBR = vozes.filter(v => v.lang.includes('pt'));
   const listaParaMostrar = vozesBR.length > 0 ? vozesBR : vozes;
   
@@ -416,7 +406,6 @@ function carregarVozesSelect() {
     opt.value = v.name;
     opt.textContent = `${v.name} (${v.lang})`;
     
-    // Marca como Selected se for a salva, ou se for a Google/Maria por padrão
     if (savedVoiceName === v.name) {
       opt.selected = true;
     } else if (!savedVoiceName && (v.name.includes('Google') || v.name.includes('Maria'))) {
@@ -460,14 +449,11 @@ function testarVoz() {
   window.speechSynthesis.speak(msg);
 }
 
-// Carregar vozes do sistema antecipadamente (corrige bug no Chrome)
 if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = carregarVozesSelect;
 }
 /* ========================================================================= */
 
-
-/* Cores e emojis dinâmicos para filas descobertas */
 const PALETA = [
   { cor: "#60a5fa", corGlow: "rgba(96,165,250,0.25)", emoji: "🏢" },
   { cor: "#34d399", corGlow: "rgba(52,211,153,0.25)", emoji: "📈" },
@@ -483,8 +469,9 @@ let agentes={};
 let prevAgentes={}, ultima=null, ticker=null, progT=null;
 let filasOcultas = new Set();
 let prevProximos = {}; 
+let statusFilaEspera = {}; 
+let ultimosTicketsEspera = []; 
 
-// Carrega os cronômetros salvos e o Histórico de Ontem
 let tempoOfflineCronometro = {};
 let historicoAgentes = {};
 try {
@@ -498,7 +485,7 @@ try {
 function toggleFilaVisibilidade(nomeFila) {
   if (filasOcultas.has(nomeFila)) filasOcultas.delete(nomeFila); 
   else filasOcultas.add(nomeFila);
-  render();
+  render(ultimosTicketsEspera);
 }
 
 /* login */
@@ -537,7 +524,7 @@ function fazerLogout(){
   localStorage.removeItem(LS_TIMER);
   TOKEN='';
   if(ticker)clearInterval(ticker);if(progT)clearInterval(progT);ultima=null;agentes={};
-  filasOcultas.clear(); tempoOfflineCronometro = {}; prevProximos = {};
+  filasOcultas.clear(); tempoOfflineCronometro = {}; prevProximos = {}; statusFilaEspera = {}; ultimosTicketsEspera = [];
   $('app').classList.remove('visible');$('lw').classList.remove('hidden');$('tkn').value='';
 }
 
@@ -547,10 +534,8 @@ function abrirApp(){
   iniciarCiclo();
 }
 
-/* auto-login infinito */
 (()=>{const s=localStorage.getItem(LS);if(s&&s.startsWith('Key ')){TOKEN=s;abrirApp();}})();
 
-/* chamadas na API */
 async function chamadaWorker(body){
   const wu=(CONFIG.workerUrl||'').trim();
   if(!wu) throw new Error('Configure WORKER_URL no script');
@@ -584,7 +569,7 @@ async function buscar(teste=false){
   return todos;
 }
 
-// 2. Busca o Status (Online/Offline) no painel do Blip
+// 2. Busca o Status (Online/Offline)
 async function buscarAtendentesStatus(){
   const PAGE=100;
   let skip=0, todos=[], continua=true;
@@ -599,12 +584,23 @@ async function buscarAtendentesStatus(){
   return todos;
 }
 
+// 3. Busca Tickets na Fila de Espera (Status: Waiting)
+async function buscarFilaEspera(){
+  try {
+    const uri = "/tickets?$filter=status%20eq%20'Waiting'&$skip=0&$take=100";
+    const d = await chamadaWorker({id:uuid(), to:'postmaster@desk.msging.net', method:'get', uri});
+    return d?.resource?.items || [];
+  } catch (e) {
+    console.error("Erro ao buscar fila de espera:", e);
+    return [];
+  }
+}
+
 /* processamento principal */
 function processar(tickets){
   agentes = {}; 
   const filasIgnoradasNomes = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
-  // 1. LER TICKETS DE HOJE
   for(const t of tickets){
     const fr = (t.team || 'Sem Fila').trim();
     if(!fr || filasIgnoradasNomes.includes(norm(fr))) continue;
@@ -626,10 +622,8 @@ function processar(tickets){
     }
   }
 
-  // --- MEMÓRIA HISTÓRICA (Ranking Justo no Dia Seguinte) ---
   const agora = Date.now();
   
-  // A. Salva os dados de HOJE no histórico
   Object.keys(agentes).forEach(fila => {
     if(!historicoAgentes[fila]) historicoAgentes[fila] = {};
     Object.keys(agentes[fila]).forEach(nome => {
@@ -643,7 +637,6 @@ function processar(tickets){
     });
   });
 
-  // B. Limpeza inteligente (Remove fantasmas inativos há mais de 3 dias)
   const limiteDias = agora - (3 * 24 * 60 * 60 * 1000);
   Object.keys(historicoAgentes).forEach(fila => {
     Object.keys(historicoAgentes[fila]).forEach(nome => {
@@ -656,7 +649,6 @@ function processar(tickets){
 
   localStorage.setItem(LS_HISTORY, JSON.stringify(historicoAgentes));
 
-  // C. Injeta a ordem de ontem para quem ainda não atendeu hoje
   Object.keys(historicoAgentes).forEach(fila => {
     if(!agentes[fila]) agentes[fila] = {};
     Object.keys(historicoAgentes[fila]).forEach(nome => {
@@ -668,10 +660,8 @@ function processar(tickets){
       }
     });
   });
-  // ---------------------------------------------------------
 }
 
-// Lógica blindada do cronômetro de Offline com Salvamento Automático
 function atualizarCronometrosOffline(atendentesApi) {
   const agora = Date.now();
   const mapaOnline = {};
@@ -699,7 +689,7 @@ function atualizarCronometrosOffline(atendentesApi) {
 }
 
 /* render */
-function render(){
+function render(ticketsEspera = []){
   const gd=$('gd'); gd.innerHTML='';
   const filasDescobertas = Object.keys(agentes).sort();
 
@@ -709,6 +699,12 @@ function render(){
   const limiteDesaparecimentoMs = CONFIG.minutosOfflineTolerancia * 60 * 1000;
   
   const filasVisiveis = filasDescobertas.filter(f => !filasOcultas.has(f));
+
+  const contagemEspera = {};
+  ticketsEspera.forEach(t => {
+    const fr = (t.team || 'Sem Fila').trim();
+    contagemEspera[fr] = (contagemEspera[fr] || 0) + 1;
+  });
 
   filasDescobertas.forEach(fila => {
     const atendentesDaFila = Object.keys(agentes[fila]);
@@ -736,7 +732,6 @@ function render(){
     dadosFilas[fila] = { ordenados, totalFila, qtdVisiveis: lista_ag_visiveis.length };
   });
 
-  // Renderiza Resumo Superior Interativo
   const sb = $('summary-bar');
   let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv" id="st">${totGlobal}</div></div><div class="dv"></div>`;
   
@@ -744,27 +739,57 @@ function render(){
     const estilo = PALETA[index % PALETA.length];
     const isOculta = filasOcultas.has(fila);
     const classeExtra = isOculta ? " hidden-queue" : "";
+    
+    const numEspera = contagemEspera[fila] || 0;
+    const badgeEspera = numEspera > 0 ? ` <span style="color:var(--yellow); font-size:11px;">(${numEspera} esp.)</span>` : '';
+
     sbHTML += `
       <div class="sc clickable${classeExtra}" onclick="toggleFilaVisibilidade('${fila}')" title="Clique para ocultar ou mostrar esta fila">
         <div class="scl">${fila} ${isOculta ? '🫥' : ''}</div>
-        <div class="scv" style="color:${estilo.cor}">${dadosFilas[fila].totalFila}</div>
+        <div class="scv" style="color:${estilo.cor}">${dadosFilas[fila].totalFila}${badgeEspera}</div>
       </div>`;
   });
   sbHTML += `<div class="lu" id="lu">aguardando...</div>`;
   sb.innerHTML = sbHTML;
 
-  // Renderiza Cards
   filasDescobertas.forEach((fila, index) => {
     
     const dados = dadosFilas[fila];
     const proximo = dados.ordenados[dados.ordenados.length-1];
     const ultimo_ag = dados.ordenados.find(a=>a.lastTime);
     const nomeProximoAtual = proximo ? proximo.nome : null;
+    const temEspera = (contagemEspera[fila] || 0) > 0;
 
     if (filasVisiveis.length === 1 && filasVisiveis[0] === fila) {
+      
       if (nomeProximoAtual && prevProximos[fila] !== undefined && nomeProximoAtual !== prevProximos[fila]) {
         const primeiroNome = nomeProximoAtual.split(' ')[0];
         falar(`${primeiroNome} será o próximo a atender.`);
+        statusFilaEspera[fila] = { nome: nomeProximoAtual, timestampFila: temEspera ? agora : null, ultimoAviso: 0 };
+      }
+
+      if (!statusFilaEspera[fila]) statusFilaEspera[fila] = { nome: nomeProximoAtual, timestampFila: null, ultimoAviso: 0 };
+      
+      if (statusFilaEspera[fila].nome !== nomeProximoAtual) {
+         statusFilaEspera[fila] = { nome: nomeProximoAtual, timestampFila: temEspera ? agora : null, ultimoAviso: 0 };
+      }
+
+      if (temEspera && nomeProximoAtual) {
+         if (!statusFilaEspera[fila].timestampFila) {
+             statusFilaEspera[fila].timestampFila = agora; 
+         } else {
+             const tempoNaFilaMs = agora - statusFilaEspera[fila].timestampFila;
+             const tempoDesdeUltimoAvisoMs = agora - statusFilaEspera[fila].ultimoAviso;
+
+             if (tempoNaFilaMs >= 120000 && tempoDesdeUltimoAvisoMs >= 120000) {
+                 const primeiroNome = nomeProximoAtual.split(' ')[0];
+                 falar(`${primeiroNome}, há um atendimento te esperando!`);
+                 statusFilaEspera[fila].ultimoAviso = agora;
+             }
+         }
+      } else {
+         statusFilaEspera[fila].timestampFila = null;
+         statusFilaEspera[fila].ultimoAviso = 0;
       }
     }
     prevProximos[fila] = nomeProximoAtual;
@@ -782,6 +807,8 @@ function render(){
     card.style.setProperty('--q-cor-a',cfg.cor+'15');
     card.style.setProperty('--q-cor-b',cfg.cor+'40');
 
+    const badgeFila = temEspera ? `<div style="margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--yellow); font-family: var(--mono); animation: blink 1.5s infinite;">⚠ ${contagemEspera[fila]} aguardando</div>` : '';
+
     card.innerHTML=`
       <div class="cdh">
         <div class="cht">
@@ -790,6 +817,7 @@ function render(){
             <div>
               <div class="qn">${fila}</div>
               <div class="qa">${dados.qtdVisiveis} visíveis · ${dados.totalFila} atend. hoje</div>
+              ${badgeFila}
             </div>
           </div>
           <div class="qt">
@@ -870,7 +898,6 @@ function render(){
   });
 }
 
-/* barra progresso */
 function barra(){
   if(progT)clearInterval(progT);
   const fill=$('pf'),dur=CONFIG.intervaloSegundos*1000,start=Date.now();
@@ -885,12 +912,10 @@ function barra(){
 setInterval(()=>{$('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());},1000);
 $('clk').textContent=fH(new Date());$('dtag').textContent=fD(new Date());
 
-/* toast */
 let tt;
 function toast(msg){
   const t=$('toast');
   t.textContent=msg;
-  // Se for sucesso, reseta a classe err
   if (msg.includes('✅')) t.classList.remove('err');
   else t.classList.add('err');
   
@@ -899,9 +924,6 @@ function toast(msg){
   tt=setTimeout(()=>t.classList.remove('show'),5000);
 }
 
-/* =========================================================================
-   LÓGICA DE EDIÇÃO DE NOMES
-   ========================================================================= */
 function salvarNomeCustomizado() {
   const emailInput = $('edit-email').value.trim().toLowerCase();
   const nomeInput = $('edit-nome').value.trim();
@@ -911,7 +933,6 @@ function salvarNomeCustomizado() {
     return;
   }
 
-  // Limpa o email para manter o padrão de chaves do sistema
   const idLimpo = emailInput.replace('@desk.msging.net', '').replace('@blip.ai', '');
 
   let custom = {};
@@ -925,22 +946,27 @@ function salvarNomeCustomizado() {
   $('edit-nome').value = '';
   
   toast('✅ Nome atualizado com sucesso!');
-  render(); // Recarrega os cards instantaneamente com o novo nome
+  render(ultimosTicketsEspera); 
 }
 
 /* CICLO PRINCIPAL */
 async function atualizar(){
   try{
-    const [tickets, atendentesApi] = await Promise.all([
+    const [tickets, atendentesApi, ticketsEspera] = await Promise.all([
       buscar(), 
-      buscarAtendentesStatus()
+      buscarAtendentesStatus(),
+      buscarFilaEspera()
     ]);
 
     processar(tickets);
     atualizarCronometrosOffline(atendentesApi); 
     
     ultima=new Date();
-    render();
+    
+    ultimosTicketsEspera = ticketsEspera; 
+    
+    render(ultimosTicketsEspera);
+    
     const p=$('pill');p.classList.remove('off');$('ptxt').textContent='ao vivo';
     barra();
   }catch(e){
