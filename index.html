@@ -267,6 +267,30 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
   </div>
 </div>
 
+<!-- NOVO MODAL PARA EDIÇÃO DE NOMES -->
+<div class="lw hidden" id="nw">
+  <div class="lc">
+    <div class="lh">✏️ Editar Atendente</div>
+    <p class="ls">Corrija o nome de exibição de um atendente que entrou na operação.</p>
+    
+    <label class="fl">E-mail ou ID do Blip</label>
+    <div class="fiw">
+      <input class="fi" id="edit-email" type="text" placeholder="ex: novo.atendente@techmetria.com.br" spellcheck="false" autocomplete="off" />
+    </div>
+    
+    <label class="fl">Nome Correto para Exibição</label>
+    <div class="fiw">
+      <input class="fi" id="edit-nome" type="text" placeholder="ex: Nome Sobrenome" spellcheck="false" autocomplete="off" />
+    </div>
+    
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button class="lb" style="background:var(--s2); border:1px solid var(--border-em); color:var(--hi);" onclick="document.getElementById('nw').classList.add('hidden')">Cancelar</button>
+      <button class="lb" onclick="salvarNomeCustomizado()">Salvar Nome</button>
+    </div>
+  </div>
+</div>
+<!-- --------------------------------- -->
+
 <div class="app" id="app">
   <header class="hd">
     <div class="logo">
@@ -282,6 +306,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;bac
       <div class="pill" id="pill"><span class="dot"></span><span id="ptxt">conectando</span></div>
       
       <button class="out-btn" onclick="abrirConfig()" title="Configurações de Voz">⚙️ voz</button>
+      <button class="out-btn" onclick="document.getElementById('nw').classList.remove('hidden')" title="Editar nomes de novos atendentes">✏️ nomes</button>
       <button class="out-btn danger" onclick="fazerLogout()" title="Sair e remover chave">⬡ sair</button>
     </div>
   </header>
@@ -305,6 +330,7 @@ const LS = 'blip_token_v1';
 const LS_TIMER = 'blip_offline_timers_v1';
 const LS_HISTORY = 'blip_history_v1';
 const LS_VOICE = 'blip_voice_pref_v1'; // CHAVE PARA SALVAR A VOZ ESCOLHIDA
+const LS_NOMES = 'blip_nomes_custom_v1'; // CHAVE PARA SALVAR OS NOMES EDITADOS
 
 const $=id=>document.getElementById(id);
 
@@ -313,13 +339,22 @@ function uuid(){return'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>
 function ini(n){return n.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join('').toUpperCase();}
 function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
 
-// Decodifica e traduz o nome
+// Decodifica e traduz o nome com suporte a edições em tempo real
 function i2n(id){
   if(!id) return '';
   let s = id;
   try { s = decodeURIComponent(s); } catch(e){}
   s = s.replace('@desk.msging.net', '').replace('@blip.ai', '').trim();
+  
+  // 1. Verifica se há um nome editado salvo no navegador
+  let nomesCustomizados = {};
+  try { nomesCustomizados = JSON.parse(localStorage.getItem(LS_NOMES)) || {}; } catch(e){}
+  if (nomesCustomizados[s]) return nomesCustomizados[s];
+
+  // 2. Verifica a configuração original (CONFIG.nomesAtendentes)
   if (CONFIG.nomesAtendentes && CONFIG.nomesAtendentes[s]) return CONFIG.nomesAtendentes[s];
+  
+  // 3. Fallback dinâmico: corta o email e capitaliza (ex: joao.silva => Joao Silva)
   let prefix = s.split('@')[0].replace(/[\._\-]/g, ' ').trim();
   return prefix.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
 }
@@ -332,8 +367,6 @@ function fHM(d){if(!d) return null; return d.toLocaleTimeString('pt-BR',{hour:'2
 /* =========================================================================
    LÓGICA DE VOZ (TTS) COM PAINEL DE CONFIGURAÇÃO
    ========================================================================= */
-
-// Função que o painel usa pra anunciar
 function falar(texto) {
   if ('speechSynthesis' in window) {
     const utterance = new SpeechSynthesisUtterance(texto);
@@ -864,6 +897,35 @@ function toast(msg){
   t.classList.add('show');
   clearTimeout(tt);
   tt=setTimeout(()=>t.classList.remove('show'),5000);
+}
+
+/* =========================================================================
+   LÓGICA DE EDIÇÃO DE NOMES
+   ========================================================================= */
+function salvarNomeCustomizado() {
+  const emailInput = $('edit-email').value.trim().toLowerCase();
+  const nomeInput = $('edit-nome').value.trim();
+  
+  if(!emailInput || !nomeInput) {
+    toast('⚠ Preencha o e-mail e o nome para salvar.');
+    return;
+  }
+
+  // Limpa o email para manter o padrão de chaves do sistema
+  const idLimpo = emailInput.replace('@desk.msging.net', '').replace('@blip.ai', '');
+
+  let custom = {};
+  try { custom = JSON.parse(localStorage.getItem(LS_NOMES)) || {}; } catch(e){}
+  
+  custom[idLimpo] = nomeInput;
+  localStorage.setItem(LS_NOMES, JSON.stringify(custom));
+
+  $('nw').classList.add('hidden');
+  $('edit-email').value = '';
+  $('edit-nome').value = '';
+  
+  toast('✅ Nome atualizado com sucesso!');
+  render(); // Recarrega os cards instantaneamente com o novo nome
 }
 
 /* CICLO PRINCIPAL */
