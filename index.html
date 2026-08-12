@@ -38,8 +38,13 @@ const CONFIG = {
   // Tempo de tolerância em MINUTOS antes de esconder o atendente offline
   minutosOfflineTolerancia: 2,
 
-  // Dias que um atendente sem atendimento hoje continua aparecendo no ranking
+  // Dias que um atendente OFFLINE continua aparecendo no ranking
   diasMemoriaHistorica: 3,
+
+  // Dias que o painel lembra a qual fila a pessoa pertence e quando ela
+  // atendeu pela última vez. É o que permite alguém voltar depois de semanas
+  // e entrar na escala como quem está há mais tempo sem atender.
+  diasVinculoFila: 180,
 
   // --- CONFIGURAÇÕES DA VOZ (TTS) ---
   vozVelocidade: 1.0,
@@ -552,6 +557,17 @@ function fH(d){ return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-di
 function fD(d){ return d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}); }
 function fHM(d){ return d ? d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : null; }
 
+/* Hoje mostra a hora; dias anteriores mostram a distância, senão um
+   atendimento de semanas atrás pareceria ter acontecido hoje de manhã. */
+function fQuando(d){
+  if(!d) return 'nunca atendeu';
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const dia = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if(dia.getTime() >= hoje.getTime()) return fHM(d);
+  const dias = Math.max(1, Math.round((hoje - dia) / 86400000));
+  return dias === 1 ? 'ontem' : `há ${dias} dias`;
+}
+
 /* =========================================================================
    IDENTIDADE VISUAL — aplica CONFIG.marca por cima dos dois temas
    ========================================================================= */
@@ -1013,7 +1029,7 @@ function fazerLogout(){
 function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
   $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`;
-  $('ft-info').textContent = `Identificação por e-mail · memória de ${CONFIG.diasMemoriaHistorica} dias · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
+  $('ft-info').textContent = `Escala por tempo sem atender · quem volta online entra na vez · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
 }
@@ -1113,39 +1129,95 @@ function processar(tickets){
     });
   });
 
-  // expira memória antiga
-  const limite = Date.now() - (CONFIG.diasMemoriaHistorica * 24*60*60*1000);
+  // o vínculo com a fila dura muito mais que a memória de exibição
+  const limiteVinculo = Date.now() - (CONFIG.diasVinculoFila * 24*60*60*1000);
   Object.keys(historicoAgentes).forEach(fila => {
-    Object.keys(historicoAgentes[fila]).forEach(id => { if(historicoAgentes[fila][id] < limite) delete historicoAgentes[fila][id]; });
+    Object.keys(historicoAgentes[fila]).forEach(id => {
+      const ts = historicoAgentes[fila][id];
+      // ts === 0 marca "pertence à fila, mas nunca atendeu"
+      if(ts > 0 && ts < limiteVinculo) delete historicoAgentes[fila][id];
+      else if(ts === 0 && !registro[id]) delete historicoAgentes[fila][id];
+    });
     if(!Object.keys(historicoAgentes[fila]).length) delete historicoAgentes[fila];
   });
   lsSet(LS_HISTORY, historicoAgentes);
 
-  // reinjeta quem atendeu nos últimos dias mas ainda não atendeu hoje
+  // reinjeta quem atendeu nos últimos dias mas ainda não atendeu hoje —
+  // esses aparecem mesmo offline, é a tolerância curta contra falha da API
+  const limiteCurto = Date.now() - (CONFIG.diasMemoriaHistorica * 24*60*60*1000);
   Object.keys(historicoAgentes).forEach(fila => {
-    if(!agentes[fila]) agentes[fila] = {};
     Object.keys(historicoAgentes[fila]).forEach(id => {
-      if(!agentes[fila][id]) agentes[fila][id] = { count:0, lastTime:new Date(historicoAgentes[fila][id]) };
+      const ts = historicoAgentes[fila][id];
+      if(!ts || ts < limiteCurto) return;
+      if(!agentes[fila]) agentes[fila] = {};
+      if(!agentes[fila][id]) agentes[fila][id] = { count:0, lastTime:new Date(ts) };
     });
   });
 }
 
-function atualizarCronometrosOffline(atendentesApi){
+/* registra que a pessoa pertence a uma fila, mesmo sem nunca ter atendido nela */
+function vincular(fila, id){
+  if(!fila || !id) return;
+  if(!historicoAgentes[fila]) historicoAgentes[fila] = {};
+  if(historicoAgentes[fila][id] === undefined) historicoAgentes[fila][id] = 0;
+}
+
+/* algumas contas do Blip devolvem as equipes do atendente; quando vier, usamos */
+function filasDoAtendente(a){
+  const out = [];
+  const add = v => { if(v == null) return; const s = String(v).trim(); if(s) out.push(s); };
+  if(Array.isArray(a.teams)) a.teams.forEach(t => add(typeof t === 'string' ? t : (t && (t.name || t.team))));
+  else if(typeof a.teams === 'string') a.teams.split(',').forEach(add);
+  add(a.team);
+  const ign = (CONFIG.filasIgnoradas || []).map(f => norm(f));
+  return [...new Set(out)].filter(f => !ign.includes(norm(f)));
+}
+
+/* Atualiza o status de TODO mundo que a API devolve — não só de quem já está
+   no ranking. É isso que permite detectar o retorno de alguém ausente. */
+function atualizarPresenca(atendentesApi){
   const agora = Date.now();
   const online = {};
+
   atendentesApi.forEach(a => {
     const id = normId(a.identity); if(!id) return;
     registrar(id);
-    online[id] = (a.status && a.status.toString().toLowerCase() === 'online');
+    const on = (a.status && a.status.toString().toLowerCase() === 'online');
+    online[id] = on;
+    if(on) delete tempoOfflineCronometro[id];
+    else if(!tempoOfflineCronometro[id]) tempoOfflineCronometro[id] = agora;
+    filasDoAtendente(a).forEach(f => vincular(f, id));
   });
 
+  // quem está no ranking e a API não devolveu: conta como offline
   Object.keys(agentes).forEach(fila => {
     Object.keys(agentes[fila]).forEach(id => {
-      if(online[id] === true) delete tempoOfflineCronometro[id];
-      else if(!tempoOfflineCronometro[id]) tempoOfflineCronometro[id] = agora;
+      if(online[id] === undefined && !tempoOfflineCronometro[id]) tempoOfflineCronometro[id] = agora;
     });
   });
+
   lsSet(LS_TIMER, tempoOfflineCronometro);
+  return online;
+}
+
+/* Coloca na escala quem está disponível agora, mesmo sem ter atendido hoje.
+   A posição vem do último atendimento: quanto mais antigo, mais perto do topo
+   da vez. Quem nunca atendeu na fila entra como o próximo. */
+function incluirDisponiveis(online){
+  const agora = Date.now();
+  const tolerancia = CONFIG.minutosOfflineTolerancia * 60 * 1000;
+  const disponivel = id => online[id] === true ||
+    (tempoOfflineCronometro[id] && (agora - tempoOfflineCronometro[id]) <= tolerancia);
+
+  Object.keys(historicoAgentes).forEach(fila => {
+    Object.keys(historicoAgentes[fila]).forEach(id => {
+      if(agentes[fila] && agentes[fila][id]) return;
+      if(!disponivel(id)) return;
+      if(!agentes[fila]) agentes[fila] = {};
+      const ts = historicoAgentes[fila][id];
+      agentes[fila][id] = { count:0, lastTime: ts ? new Date(ts) : null };
+    });
+  });
 }
 
 /* =========================================================================
@@ -1334,7 +1406,7 @@ function render(ticketsEspera = []){
                     : isUltimo  ? '<span class="badge-ult">último</span>'
                                 : `<span class="p">#${pos+1}</span>`;
 
-      const timeStr = ag.lastTime ? fHM(ag.lastTime) : 'não atendeu';
+      const timeStr = fQuando(ag.lastTime);
       const timeCls = ag.lastTime ? 'ag-time' : 'ag-time none';
       const isOnline = !tempoOfflineCronometro[ag.id];
       let tip = isOnline ? 'Online' : 'Offline';
@@ -1412,7 +1484,9 @@ async function atualizar(){
     ]);
 
     processar(tickets);
-    atualizarCronometrosOffline(atendentesApi);
+    const online = atualizarPresenca(atendentesApi);
+    incluirDisponiveis(online);
+    lsSet(LS_HISTORY, historicoAgentes);
     limparRegistro();
     lsSet(LS_REG, registro);
 
