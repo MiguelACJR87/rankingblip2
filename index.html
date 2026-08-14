@@ -75,6 +75,12 @@ const CONFIG = {
   // Fotos base, vinculadas por e-mail. Aceita URL ("https://...") ou caminho
   // relativo ao arquivo ("fotos/miguel.jpg"). O que for enviado pela tela
   // "atendentes" sobrescreve o que estiver aqui.
+  // Teto para GIF enviado do computador. GIF não pode ser reduzido pelo
+  // navegador sem perder a animação, então ele é guardado inteiro. As imagens
+  // ficam em IndexedDB (centenas de MB), mas o limite existe para não pesar
+  // na memória do navegador da TV.
+  limiteGifKB: 2500,
+
   fotosAtendentes: {
     // "gestao.02@techmetria.com.br": "fotos/miguel.jpg",
     // "gestao.04@techmetria.com.br": "https://exemplo.com/lucas.jpg"
@@ -407,7 +413,8 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 
     <div class="atd-list" id="lista-atd"></div>
     <input type="file" id="file-foto" accept="image/*" style="display:none" onchange="processarArquivoFoto(this)" />
-    <div class="fh" style="margin:8px 0 14px;">Enter salva o nome. Clique na <b>foto</b> para enviar uma imagem do computador, <b>🔗</b> para usar um endereço da web. <b>↺</b> volta ao nome padrão. <b>✕</b> remove a pessoa do painel e apaga o histórico dela.</div>
+    <div class="fh" id="uso-espaco" style="margin:8px 0 4px;"></div>
+    <div class="fh" style="margin:4px 0 14px;">Enter salva o nome. Clique na <b>foto</b> para enviar uma imagem do computador, <b>🔗</b> para usar um endereço da web. <b>↺</b> volta ao nome padrão. <b>✕</b> remove a pessoa do painel e apaga o histórico dela.</div>
 
     <details class="atd-add">
       <summary>+ Cadastrar um e-mail que ainda não apareceu</summary>
@@ -472,6 +479,7 @@ const LS_TIMER   = 'blip_offline_timers_v2';   // agora indexado por e-mail
 const LS_HISTORY = 'blip_history_v2';          // agora indexado por e-mail
 const LS_NOMES   = 'blip_nomes_custom_v1';
 const LS_FOTOS   = 'blip_fotos_v1';
+const LS_MINIS   = 'blip_minis_v1';
 const LS_REG     = 'blip_registro_v1';
 const LS_VOICE   = 'blip_voice_pref_v1';
 const LS_RATE    = 'blip_voice_rate_v1';
@@ -518,26 +526,159 @@ function temNomeDefinido(id){ return !!(nomesCustom[id] || CONFIG_NOMES[id]); }
 /* --- FOTOS: mesma lógica dos nomes, sempre vinculadas ao e-mail --- */
 const CONFIG_FOTOS = {};
 Object.keys(CONFIG.fotosAtendentes || {}).forEach(k => { CONFIG_FOTOS[normId(k)] = CONFIG.fotosAtendentes[k]; });
-let fotosCustom = lsGet(LS_FOTOS, {}) || {};
-(function normalizarFotos(){
-  const n = {};
-  Object.keys(fotosCustom).forEach(k => { n[normId(k)] = fotosCustom[k]; });
-  fotosCustom = n;
-})();
+/* Imagens ficam em IndexedDB, nao em localStorage: localStorage guarda texto
+   em UTF-16 (2 bytes por caractere), entao um GIF de 600 KB em base64 consome
+   ~1,6 MB dos 5 MB de cota. IndexedDB trabalha na casa das centenas de MB.
+   Os dois mapas abaixo sao a copia em memoria, carregada uma vez no inicio. */
+let fotosCustom = {};
+let miniaturas  = {};
 
-function fotoDe(id){ return fotosCustom[id] || CONFIG_FOTOS[id] || null; }
-
-function salvarFotos(){
-  try{ localStorage.setItem(LS_FOTOS, JSON.stringify(fotosCustom)); return true; }
-  catch(e){
-    toast('⚠ O navegador ficou sem espaço para guardar fotos. Apague alguma antes de enviar outra.');
-    return false;
-  }
+const IDB_NOME = 'blip_imagens', IDB_STORE = 'img';
+let idbConexao = null;
+function idb(){
+  if(idbConexao) return idbConexao;
+  idbConexao = new Promise((ok, falha) => {
+    if(!('indexedDB' in window)) return falha(new Error('IndexedDB indisponivel'));
+    const req = indexedDB.open(IDB_NOME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => ok(req.result);
+    req.onerror  = () => falha(req.error);
+  });
+  return idbConexao;
+}
+async function idbGravar(pares){
+  const db = await idb();
+  return new Promise((ok, falha) => {
+    const t = db.transaction(IDB_STORE, 'readwrite');
+    const s = t.objectStore(IDB_STORE);
+    pares.forEach(([k, v]) => { if(v == null) s.delete(k); else s.put(v, k); });
+    t.oncomplete = () => ok(true);
+    t.onerror = () => falha(t.error);
+    t.onabort = () => falha(t.error || new Error('transacao abortada'));
+  });
+}
+async function idbLerTudo(){
+  const db = await idb();
+  return new Promise((ok, falha) => {
+    const t = db.transaction(IDB_STORE, 'readonly');
+    const s = t.objectStore(IDB_STORE);
+    const rk = s.getAllKeys(), rv = s.getAll();
+    t.oncomplete = () => {
+      const saida = {};
+      rk.result.forEach((k, i) => { saida[k] = rv.result[i]; });
+      ok(saida);
+    };
+    t.onerror = () => falha(t.error);
+  });
 }
 
-/* avatar das linhas do ranking */
+/* Le tudo do IndexedDB e migra o que ainda estiver no localStorage antigo,
+   liberando a cota que ficou presa la. */
+async function carregarImagens(){
+  let migrou = 0;
+  try{
+    const bruto = await idbLerTudo();
+    Object.keys(bruto).forEach(k => {
+      if(k.startsWith('foto:')) fotosCustom[k.slice(5)] = bruto[k];
+      else if(k.startsWith('mini:')) miniaturas[k.slice(5)] = bruto[k];
+    });
+
+    const antigasF = lsGet(LS_FOTOS, {}) || {};
+    const antigasM = lsGet(LS_MINIS, {}) || {};
+    const pares = [];
+    Object.keys(antigasF).forEach(k => {
+      const id = normId(k);
+      if(!fotosCustom[id]){ fotosCustom[id] = antigasF[k]; pares.push(['foto:' + id, antigasF[k]]); migrou++; }
+    });
+    Object.keys(antigasM).forEach(k => {
+      const id = normId(k);
+      if(!miniaturas[id]){ miniaturas[id] = antigasM[k]; pares.push(['mini:' + id, antigasM[k]]); }
+    });
+    if(pares.length) await idbGravar(pares);
+    localStorage.removeItem(LS_FOTOS);
+    localStorage.removeItem(LS_MINIS);
+  }catch(e){
+    // sem IndexedDB: volta para o modo antigo, com as limitacoes conhecidas
+    console.warn('IndexedDB indisponivel, usando localStorage:', e);
+    fotosCustom = lsGet(LS_FOTOS, {}) || {};
+    miniaturas  = lsGet(LS_MINIS, {}) || {};
+  }
+  const n = {}, m = {};
+  Object.keys(fotosCustom).forEach(k => { n[normId(k)] = fotosCustom[k]; });
+  Object.keys(miniaturas).forEach(k  => { m[normId(k)] = miniaturas[k]; });
+  fotosCustom = n; miniaturas = m;
+  if(migrou) toast('✅ ' + migrou + ' imagem(ns) movida(s) para o armazenamento novo. Espaço liberado.');
+  refrescarTudo();
+}
+
+function fotoDe(id){ return fotosCustom[id] || CONFIG_FOTOS[id] || null; }
+function ehAnimada(id){
+  const f = fotoDe(id) || '';
+  return f.startsWith('data:image/gif') || /\.gif(\?|#|$)/i.test(f) || /\.webp(\?|#|$)/i.test(f);
+}
+/* nas linhas do ranking usamos um quadro estático: dezenas de GIFs de 32px
+   animando ao mesmo tempo pesam no navegador da TV sem acrescentar nada */
+function miniaturaDe(id){ return miniaturas[id] || fotoDe(id); }
+
+/* GIF vindo de URL não tem miniatura pronta — extrai o 1o quadro na primeira
+   vez que ele aparece na tela e guarda. Funciona para arquivo do próprio
+   repositório (mesma origem) e para host que libere CORS; se o host bloquear,
+   a linha simplesmente segue animada. */
+const miniaturaTentada = new Set();
+let repinturaT = null;
+function agendarRepintura(){
+  clearTimeout(repinturaT);
+  repinturaT = setTimeout(() => { if($('app').classList.contains('visible')) render(ultimosTicketsEspera); }, 300);
+}
+function garantirMiniatura(id){
+  if(!ehAnimada(id) || miniaturas[id] || miniaturaTentada.has(id)) return;
+  const src = fotoDe(id); if(!src) return;
+  miniaturaTentada.add(id);
+  const img = new Image();
+  if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    try{
+      miniaturas[id] = recortarQuadrado(img, 64);
+      salvarImagem(id).then(ok => { if(ok) agendarRepintura(); });
+    }catch(e){ /* canvas bloqueado pelo host: mantém a linha animada */ }
+  };
+  img.src = src;
+}
+
+/* Grava a imagem de UM atendente. Devolve true/false para o chamador poder
+   desfazer a alteracao se a gravacao falhar. */
+async function salvarImagem(id){
+  try{
+    await idbGravar([['foto:' + id, fotosCustom[id] || null], ['mini:' + id, miniaturas[id] || null]]);
+    return true;
+  }catch(e){
+    try{
+      localStorage.setItem(LS_FOTOS, JSON.stringify(fotosCustom));
+      localStorage.setItem(LS_MINIS, JSON.stringify(miniaturas));
+      return true;
+    }catch(e2){
+      toast('⚠ Não deu para guardar a imagem: o navegador recusou por espaço.');
+      return false;
+    }
+  }
+}
+function removerImagem(id){
+  idbGravar([['foto:' + id, null], ['mini:' + id, null]]).catch(() => {});
+}
+/* espaco ocupado pelas imagens, em MB — UTF-16 conta 2 bytes por caractere */
+function espacoImagens(){
+  let ch = 0;
+  Object.values(fotosCustom).forEach(v => ch += (v || '').length);
+  Object.values(miniaturas).forEach(v  => ch += (v || '').length);
+  return (ch * 2) / (1024 * 1024);
+}
+
+/* avatar das linhas do ranking (usa miniatura estática quando houver) */
 function avatarHTML(id, nome){
-  const f = fotoDe(id);
+  const f = miniaturaDe(id);
   return f
     ? `<img src="${esc(f)}" alt="${esc(nome)}" onerror="this.replaceWith(document.createTextNode('${esc(ini(nome))}'))" />`
     : esc(ini(nome));
@@ -820,6 +961,13 @@ function fecharAtendentes(){ $('nw').classList.add('hidden'); }
 
 function renderListaAtendentes(){
   const alvo = $('lista-atd');
+  const uso = $('uso-espaco');
+  if(uso){
+    const n = Object.keys(fotosCustom).length;
+    uso.innerHTML = n
+      ? `<b>${n}</b> imagem(ns) guardada(s) · <b>${espacoImagens().toFixed(1)} MB</b>`
+      : 'Nenhuma imagem enviada ainda.';
+  }
   const busca = norm($('busca-atd').value || '');
 
   const ids = Object.keys(registro).sort((a,b) => {
@@ -839,7 +987,7 @@ function renderListaAtendentes(){
     const semNome = !temNomeDefinido(id);
     const temFoto = !!fotoDe(id);
     const tag = editado ? '<span class="tag edit">editado</span>' : (semNome ? '<span class="tag auto">nome automático</span>' : '');
-    const tagFoto = temFoto ? '' : '<span class="tag auto">sem foto</span>';
+    const tagFoto = temFoto ? (ehAnimada(id) ? '<span class="tag edit">animada</span>' : '') : '<span class="tag auto">sem foto</span>';
     return `
       <div class="atd-row ${semNome ? 'novo' : ''}">
         <div class="atd-av" tabindex="0" title="Enviar ou trocar a foto" onclick="trocarFoto('${esc(id)}')"
@@ -875,25 +1023,43 @@ function trocarFoto(id){
 function processarArquivoFoto(input){
   const arq = input.files && input.files[0];
   if(!arq || !fotoAlvo) return;
-  if(!arq.type.startsWith('image/')){ toast('⚠ Escolha um arquivo de imagem (jpg, png ou webp).'); return; }
+  if(!arq.type.startsWith('image/')){ toast('⚠ Escolha um arquivo de imagem (jpg, png, webp ou gif).'); return; }
+
+  const animada = (arq.type === 'image/gif' || arq.type === 'image/webp');
+  const tetoKB = CONFIG.limiteGifKB || 600;
+  if(animada && arq.size > tetoKB * 1024){
+    toast(`⚠ GIF de ${Math.round(arq.size/1024)} KB é grande demais (limite ${tetoKB} KB). Reduza a duração ou o tamanho.`);
+    fotoAlvo = null; return;
+  }
 
   const leitor = new FileReader();
   leitor.onload = ev => {
+    const bruto = ev.target.result;
     const img = new Image();
-    img.onload = () => {
-      const dataUrl = recortarQuadrado(img, 240);
-      const anterior = fotosCustom[fotoAlvo];
-      fotosCustom[fotoAlvo] = dataUrl;
-      if(salvarFotos()){
-        toast('✅ Foto de ' + nomeDe(fotoAlvo) + ' atualizada.');
+    img.onload = async () => {
+      const id = fotoAlvo;
+      const anteriorFoto = fotosCustom[id], anteriorMini = miniaturas[id];
+
+      if(animada){
+        // guarda o arquivo original: recortar no canvas congelaria a animação
+        fotosCustom[id] = bruto;
+        miniaturas[id]  = recortarQuadrado(img, 64);   // 1o quadro, para as linhas
+      }else{
+        fotosCustom[id] = recortarQuadrado(img, 240);
+        delete miniaturas[id];
+      }
+
+      if(await salvarImagem(id)){
+        toast('✅ Imagem de ' + nomeDe(id) + ' atualizada' + (animada ? ' (animada no destaque).' : '.'));
         refrescarTudo();
       }else{
-        if(anterior) fotosCustom[fotoAlvo] = anterior; else delete fotosCustom[fotoAlvo];
+        if(anteriorFoto) fotosCustom[id] = anteriorFoto; else delete fotosCustom[id];
+        if(anteriorMini) miniaturas[id]  = anteriorMini; else delete miniaturas[id];
       }
       fotoAlvo = null;
     };
     img.onerror = () => { toast('⚠ Não deu para abrir essa imagem.'); fotoAlvo = null; };
-    img.src = ev.target.result;
+    img.src = bruto;
   };
   leitor.onerror = () => { toast('⚠ Não deu para ler o arquivo.'); fotoAlvo = null; };
   leitor.readAsDataURL(arq);
@@ -918,11 +1084,14 @@ function fotoPorUrl(id){
   const url = v.trim();
   if(!url){
     delete fotosCustom[id];
-    salvarFotos();
+    delete miniaturas[id];
+    salvarImagem(id);
     toast('✅ Foto removida.');
   }else{
     fotosCustom[id] = url;
-    if(!salvarFotos()) return;
+    delete miniaturas[id];
+    miniaturaTentada.delete(id);
+    salvarImagem(id);
     toast('✅ Foto de ' + nomeDe(id) + ' atualizada.');
   }
   refrescarTudo();
@@ -953,13 +1122,14 @@ function esquecerAtendente(id){
   delete registro[id];
   delete nomesCustom[id];
   delete fotosCustom[id];
+  delete miniaturas[id];
   delete tempoOfflineCronometro[id];
   Object.keys(historicoAgentes).forEach(f => {
     delete historicoAgentes[f][id];
     if(!Object.keys(historicoAgentes[f]).length) delete historicoAgentes[f];
   });
   Object.keys(agentes).forEach(f => { delete agentes[f][id]; });
-  lsSet(LS_REG, registro); lsSet(LS_NOMES, nomesCustom); salvarFotos();
+  lsSet(LS_REG, registro); lsSet(LS_NOMES, nomesCustom); removerImagem(id);
   lsSet(LS_TIMER, tempoOfflineCronometro); lsSet(LS_HISTORY, historicoAgentes);
   toast('✅ ' + nome + ' removido do painel.');
   refrescarTudo();
@@ -1034,6 +1204,7 @@ function abrirApp(){
   iniciarCiclo();
 }
 
+carregarImagens();
 (() => { const s = localStorage.getItem(LS); if(s && s.startsWith('Key ')){ TOKEN = s; abrirApp(); } })();
 
 /* =========================================================================
@@ -1390,6 +1561,7 @@ function render(ticketsEspera = []){
 
     const listaEl = card.querySelector(`#rl-${i}`);
     dados.ordenados.forEach((ag, pos) => {
+      garantirMiniatura(ag.id);
       const isProximo = ag.id === idProx;
       const isUltimo  = ultimoAg && ag.id === ultimoAg.id && ag.lastTime;
       const prevLast  = prevAgentes[fila]?.[ag.id]?.lastTime;
