@@ -486,6 +486,7 @@ const LS_RATE    = 'blip_voice_rate_v1';
 const LS_THEME   = 'blip_theme_v1';
 const LS_ZOOM    = 'blip_zoom_v1';
 const LS_VOZFILA = 'blip_vozfila_v1';
+const LS_FILTRO  = 'blip_filas_ocultas_v1';
 
 const $ = id => document.getElementById(id);
 function lsGet(k, def){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
@@ -918,7 +919,7 @@ function paleta(){
 let TOKEN = '';
 let agentes = {};                 // agentes[fila][email] = {count, lastTime}
 let prevAgentes = {}, ultima = null, ticker = null, progT = null;
-let filasOcultas = new Set();
+let filasOcultas = new Set(lsGet(LS_FILTRO, []) || []);
 let FILAS_ATUAIS = [];
 let prevProximos = {};
 let statusFilaEspera = {};
@@ -1192,7 +1193,7 @@ function fazerLogout(){
   TOKEN = '';
   if(ticker) clearInterval(ticker);
   if(progT) clearInterval(progT);
-  ultima = null; agentes = {}; filasOcultas.clear(); prevProximos = {}; statusFilaEspera = {}; ultimosTicketsEspera = [];
+  ultima = null; agentes = {}; filasOcultas.clear(); salvarFiltro(); prevProximos = {}; statusFilaEspera = {}; ultimosTicketsEspera = [];
   $('app').classList.remove('visible'); $('lw').classList.remove('hidden'); $('tkn').value = '';
 }
 
@@ -1278,7 +1279,7 @@ function processar(tickets){
     if(!id) continue;
     registrar(id);
 
-    if(!agentes[fila]) agentes[fila] = {};
+    if(!agentes[fila]){ unificarFila(fila); agentes[fila] = agentes[fila] || {}; }
     if(!agentes[fila][id]) agentes[fila][id] = { count:0, lastTime:null };
     agentes[fila][id].count++;
 
@@ -1326,9 +1327,36 @@ function processar(tickets){
   });
 }
 
+/* O nome da fila pode chegar por dois caminhos (ticket e API de atendentes) com
+   grafias diferentes. Sem unificar, nasce uma fila gêmea que escapa do filtro. */
+function unificarFila(nome){
+  const alvo = norm(nome);
+  Object.keys(historicoAgentes).forEach(f => {
+    if(f === nome || norm(f) !== alvo) return;
+    historicoAgentes[nome] = Object.assign({}, historicoAgentes[f], historicoAgentes[nome] || {});
+    delete historicoAgentes[f];
+    if(filasOcultas.has(f)){ filasOcultas.delete(f); filasOcultas.add(nome); salvarFiltro(); }
+  });
+  Object.keys(agentes).forEach(f => {
+    if(f === nome || norm(f) !== alvo) return;
+    agentes[nome] = Object.assign({}, agentes[f], agentes[nome] || {});
+    delete agentes[f];
+  });
+  return nome;
+}
+
+/* devolve o nome já em uso para essa fila, se houver, evitando duplicar */
+function canonFila(nome){
+  const alvo = norm(nome);
+  const conhecidas = new Set([...Object.keys(agentes), ...Object.keys(historicoAgentes)]);
+  for(const f of conhecidas) if(norm(f) === alvo) return f;
+  return String(nome).trim();
+}
+
 /* registra que a pessoa pertence a uma fila, mesmo sem nunca ter atendido nela */
 function vincular(fila, id){
   if(!fila || !id) return;
+  fila = canonFila(fila);
   if(!historicoAgentes[fila]) historicoAgentes[fila] = {};
   if(historicoAgentes[fila][id] === undefined) historicoAgentes[fila][id] = 0;
 }
@@ -1394,9 +1422,12 @@ function incluirDisponiveis(online){
 /* =========================================================================
    FILTRO E VOZ POR FILA
    ========================================================================= */
+function salvarFiltro(){ lsSet(LS_FILTRO, [...filasOcultas]); }
+
 function toggleFilaVisibilidade(i){
   const fila = FILAS_ATUAIS[i]; if(fila === undefined) return;
   if(filasOcultas.has(fila)) filasOcultas.delete(fila); else filasOcultas.add(fila);
+  salvarFiltro();   // sobrevive a recarga da aba, queda de energia e F5
   render(ultimosTicketsEspera);
 }
 function toggleVozFila(i, ev){
