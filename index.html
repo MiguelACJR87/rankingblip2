@@ -49,6 +49,31 @@ const CONFIG = {
   // --- CONFIGURAÇÕES DA VOZ (TTS) ---
   vozVelocidade: 1.0,
   vozTom: 1.1,
+
+  // Minutos de espera antes da primeira cobrança, e entre uma e outra
+  minutosCobranca: 2,
+
+  // Frases faladas. {nome} vira o primeiro nome do atendente.
+  // Cada item de "cobranca" é um nível: hoje há um só, então a mesma frase
+  // é usada em todas as repetições. Para escalonar depois, basta acrescentar
+  // outro array — o 2º nível passa a valer da 2ª cobrança em diante.
+  frases: {
+    proximo: [
+      "{nome} será o próximo a atender."
+    ],
+    cobranca: [
+      [ "Ei {nome}, tá pagando de doido é? Tem um atendimento lhe esperando!" ]
+    ],
+    // Atendimento ATIVO: o ticket já nasce com dono (contato solicitado pelo
+    // próprio atendente, fila "Transferência direta"), então o aviso vai
+    // direto para a pessoa, sem passar pela vez da escala.
+    ativo: [
+      "{nome}, há um atendimento ativo te esperando."
+    ]
+  },
+
+  // Avisar por voz quando um atendimento ativo ficar aguardando
+  avisarAtivos: true,
   // ----------------------------------
 
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
@@ -56,7 +81,7 @@ const CONFIG = {
   // Nomes base. O que for editado na tela sobrescreve esta lista.
   nomesAtendentes: {
     "gestao.01@techmetria.com.br": "Matheus Muniz",
-    "gestao01.techmetria@gmail.com": "Brena Ferreira"
+    "gestao01.techmetria@gmail.com": "Brena Ferreira",
     "gestao.02@techmetria.com.br": "Miguel Carvalho",
     "gestao.03@techmetria.com.br": "Arthur Vinicius",
     "gestao.04@techmetria.com.br": "Lucas França",
@@ -308,6 +333,7 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 .ag-cnt{font-size:10px;font-family:var(--mono);color:var(--lo);}
 .badge-prox{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--green);background:var(--green-soft);border:1px solid var(--green-line);border-radius:4px;padding:2px 6px;animation:glow-pulse 2s ease-in-out infinite;}
 @keyframes glow-pulse{0%,100%{box-shadow:0 0 0 rgba(0,0,0,0);}50%{box-shadow:0 0 8px var(--green-halo);}}
+.badge-ativo{display:inline-flex;align-items:center;gap:3px;margin-left:6px;font-size:9px;font-family:var(--mono);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--yellow);background:rgba(180,110,10,.14);border:1px solid rgba(180,110,10,.4);border-radius:4px;padding:1px 5px;vertical-align:middle;animation:blink 1.5s ease-in-out infinite;}
 .badge-ult{font-size:9px;font-family:var(--mono);color:var(--q-cor);background:var(--q-cor-a);border:1px solid var(--q-cor-b);border-radius:4px;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;}
 .cdf{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 .fl2{color:var(--q-cor);font-weight:500;}
@@ -818,6 +844,14 @@ aplicarMarca(); aplicarTema(false); aplicarZoom();
    ========================================================================= */
 function taxaVoz(){ return parseFloat(localStorage.getItem(LS_RATE) || CONFIG.vozVelocidade || 1); }
 
+/* Sorteia uma frase do nível pedido, evitando repetir a última usada. */
+function sortearFrase(lista, nome, evitar){
+  if(!Array.isArray(lista) || !lista.length) return '';
+  const opcoes = lista.length > 1 ? lista.filter(f => f !== evitar) : lista;
+  const escolhida = opcoes[Math.floor(Math.random() * opcoes.length)];
+  return { crua: escolhida, texto: escolhida.replace(/\{nome\}/g, nome) };
+}
+
 function falar(texto){
   if(!('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(texto);
@@ -926,6 +960,8 @@ let prevProximos = {};
 let statusFilaEspera = {};
 let ultimosTicketsEspera = [];
 let vozFila = localStorage.getItem(LS_VOZFILA) || null;
+let statusAtivos = {};          // [email] = { ultimoAviso }
+let ativosInicializado = false; // não anuncia o que já estava lá ao abrir o painel
 
 let tempoOfflineCronometro = lsGet(LS_TIMER, {}) || {};   // [email] = timestamp
 let historicoAgentes       = lsGet(LS_HISTORY, {}) || {}; // [fila][email] = timestamp
@@ -1444,6 +1480,42 @@ function deveAnunciar(fila, visiveis){
   return visiveis.length === 1 && visiveis[0] === fila;
 }
 
+/* O atendente aparece em alguma fila que está à mostra? Se ele só existe em
+   fila oculta, o painel cala — senão a TV anunciaria algo que não está nela.
+   Quem não aparece em nenhuma fila (ainda sem atendimento) é anunciado. */
+function atendenteVisivel(id, visiveis){
+  let achouEmAlguma = false;
+  for(const fila of Object.keys(agentes)){
+    if(!agentes[fila][id]) continue;
+    achouEmAlguma = true;
+    if(visiveis.includes(fila)) return true;
+  }
+  return !achouEmAlguma;
+}
+
+/* Cobrança de atendimento ativo: é por pessoa, não pela vez da escala.
+   Avisa assim que o ticket aparece e repete a cada CONFIG.minutosCobranca
+   enquanto ele continuar aguardando. */
+function processarAvisosAtivos(ativos, visiveis){
+  const agora = Date.now();
+  const intervalo = (CONFIG.minutosCobranca || 2) * 60 * 1000;
+
+  Object.keys(statusAtivos).forEach(id => { if(!ativos[id]) delete statusAtivos[id]; });
+
+  if(CONFIG.avisarAtivos !== false){
+    Object.keys(ativos).forEach(id => {
+      if(!atendenteVisivel(id, visiveis)) return;
+      if(!statusAtivos[id]) statusAtivos[id] = { ultimoAviso: ativosInicializado ? 0 : agora };
+      const est = statusAtivos[id];
+      if((agora - est.ultimoAviso) < intervalo) return;
+      const f = sortearFrase(CONFIG.frases?.ativo, nomeDe(id).split(' ')[0], est.ultimaFrase);
+      if(f){ falar(f.texto); est.ultimaFrase = f.crua; }
+      est.ultimoAviso = agora;
+    });
+  }
+  ativosInicializado = true;   // na 1a carga não dispara o que já estava lá
+}
+
 /* =========================================================================
    RENDER
    ========================================================================= */
@@ -1458,8 +1530,17 @@ function render(ticketsEspera = []){
   const visiveis = filas.filter(f => !filasOcultas.has(f));
   const ignoradas = (CONFIG.filasIgnoradas || []).map(f => norm(f));
 
+  /* Um ticket aguardando que JÁ tem atendente definido é um atendimento ativo:
+     o próprio atendente solicitou o contato (fila "Transferência direta").
+     Ele não entra na contagem da fila — é cobrança individual. */
   const espera = {}; let totalEspera = 0;
+  const ativos = {}; let totalAtivos = 0;
   ticketsEspera.forEach(t => {
+    const dono = normId(t.agentIdentity || '');
+    if(dono){
+      ativos[dono] = (ativos[dono] || 0) + 1; totalAtivos++;
+      return;
+    }
     const fila = (t.team || 'Sem Fila').trim();
     if(ignoradas.includes(norm(fila))) return;
     espera[fila] = (espera[fila] || 0) + 1; totalEspera++;
@@ -1493,6 +1574,7 @@ function render(ticketsEspera = []){
   /* barra de resumo */
   let sbHTML = `<div class="sc"><div class="scl">Total hoje</div><div class="scv">${totGlobal}</div></div>`;
   if(totalEspera > 0) sbHTML += `<div class="sc"><div class="scl">Na espera</div><div class="scv" style="color:var(--yellow)">${totalEspera}</div></div>`;
+  if(totalAtivos > 0) sbHTML += `<div class="sc"><div class="scl">Ativos aguardando</div><div class="scv" style="color:var(--yellow)">⚡ ${totalAtivos}</div></div>`;
   sbHTML += `<div class="dv"></div>`;
   filas.forEach((fila, i) => {
     const estilo = P[i % P.length];
@@ -1518,26 +1600,37 @@ function render(ticketsEspera = []){
 
     /* --- anúncios por voz --- */
     if(deveAnunciar(fila, visiveis)){
+      const primeiroNome = idProx ? nomeDe(idProx).split(' ')[0] : '';
+      const novoEstado = () => ({ id:idProx, timestampFila: temEspera ? agora : null, ultimoAviso:0, nivel:0, ultimaCobranca:'' });
+
       if(idProx && prevProximos[fila] !== undefined && idProx !== prevProximos[fila]){
-        falar(`${nomeDe(idProx).split(' ')[0]} será o próximo a atender.`);
-        statusFilaEspera[fila] = { id:idProx, timestampFila: temEspera ? agora : null, ultimoAviso:0 };
+        const f = sortearFrase(CONFIG.frases?.proximo, primeiroNome, statusFilaEspera[fila]?.ultimoProximo);
+        if(f) falar(f.texto);
+        statusFilaEspera[fila] = novoEstado();
+        statusFilaEspera[fila].ultimoProximo = f ? f.crua : '';
       }
-      if(!statusFilaEspera[fila]) statusFilaEspera[fila] = { id:idProx, timestampFila:null, ultimoAviso:0 };
-      if(statusFilaEspera[fila].id !== idProx) statusFilaEspera[fila] = { id:idProx, timestampFila: temEspera ? agora : null, ultimoAviso:0 };
+      if(!statusFilaEspera[fila]) statusFilaEspera[fila] = { id:idProx, timestampFila:null, ultimoAviso:0, nivel:0, ultimaCobranca:'' };
+      if(statusFilaEspera[fila].id !== idProx) statusFilaEspera[fila] = novoEstado();
+
+      const est = statusFilaEspera[fila];
+      const intervalo = (CONFIG.minutosCobranca || 2) * 60 * 1000;
 
       if(temEspera && idProx){
-        if(!statusFilaEspera[fila].timestampFila) statusFilaEspera[fila].timestampFila = agora;
-        else{
-          const naFila = agora - statusFilaEspera[fila].timestampFila;
-          const desdeAviso = agora - statusFilaEspera[fila].ultimoAviso;
-          if(naFila >= 120000 && desdeAviso >= 120000){
-            falar(`${nomeDe(idProx).split(' ')[0]}, há um atendimento te esperando!`);
-            statusFilaEspera[fila].ultimoAviso = agora;
-          }
+        if(!est.timestampFila) est.timestampFila = agora;
+        else if((agora - est.timestampFila) >= intervalo && (agora - est.ultimoAviso) >= intervalo){
+          // a cada cobrança sobe um degrau, parando no último nível cadastrado
+          const niveis = CONFIG.frases?.cobranca || [];
+          const nivel = Math.min(est.nivel, niveis.length - 1);
+          const f = sortearFrase(niveis[nivel], primeiroNome, est.ultimaCobranca);
+          if(f){ falar(f.texto); est.ultimaCobranca = f.crua; }
+          est.nivel = Math.min(est.nivel + 1, niveis.length - 1);
+          est.ultimoAviso = agora;
         }
       }else{
-        statusFilaEspera[fila].timestampFila = null;
-        statusFilaEspera[fila].ultimoAviso = 0;
+        // fila zerou: a próxima cobrança recomeça do tom neutro
+        est.timestampFila = null;
+        est.ultimoAviso = 0;
+        est.nivel = 0;
       }
     }
     prevProximos[fila] = idProx;
@@ -1610,6 +1703,8 @@ function render(ticketsEspera = []){
                     : isUltimo  ? '<span class="badge-ult">último</span>'
                                 : `<span class="p">#${pos+1}</span>`;
 
+      const nAtivos = ativos[ag.id] || 0;
+      const seloAtivo = nAtivos ? `<span class="badge-ativo" title="Atendimento ativo aguardando este atendente">⚡ ativo${nAtivos > 1 ? ' ×' + nAtivos : ''}</span>` : '';
       const timeStr = fQuando(ag.lastTime);
       const timeCls = ag.lastTime ? 'ag-time' : 'ag-time none';
       const isOnline = !tempoOfflineCronometro[ag.id];
@@ -1627,6 +1722,7 @@ function render(ticketsEspera = []){
         </div>
         <div class="nc" title="${esc(ag.id)}">
           <span class="nf">${esc(pn)}</span> <span class="nl">${esc(rest.join(' '))}</span>
+          ${seloAtivo}
         </div>
         <div class="stc">
           <span class="${timeCls}">${timeStr}</span>
@@ -1635,6 +1731,8 @@ function render(ticketsEspera = []){
       listaEl.appendChild(row);
     });
   });
+
+  processarAvisosAtivos(ativos, visiveis);
 
   if(ultima && $('lu')) $('lu').textContent = `atualizado ${fH(ultima)}`;
 
