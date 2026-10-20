@@ -54,14 +54,15 @@ const CONFIG = {
   minutosCobranca: 2,
 
   // Frases faladas. {nome} vira o primeiro nome do atendente.
-  // Cada item de "cobranca" é um nível: hoje há um só, então a mesma frase
-  // é usada em todas as repetições. Para escalonar depois, basta acrescentar
-  // outro array — o 2º nível passa a valer da 2ª cobrança em diante.
+  // Cada item de "cobranca" é um nível de insistência. O 1º vale na primeira
+  // cobrança (2 min de espera), o 2º na seguinte (4 min) e assim por diante;
+  // o último nível se repete enquanto o atendimento continuar parado.
   frases: {
     proximo: [
       "{nome} será o próximo a atender."
     ],
     cobranca: [
+      [ "{nome}, há um atendimento lhe esperando." ],
       [ "Ei {nome}, tá pagando de doido é? Tem um atendimento lhe esperando!" ]
     ],
     // Atendimento ATIVO: o ticket já nasce com dono (contato solicitado pelo
@@ -81,7 +82,6 @@ const CONFIG = {
   // Nomes base. O que for editado na tela sobrescreve esta lista.
   nomesAtendentes: {
     "gestao.01@techmetria.com.br": "Matheus Muniz",
-    "gestao01.techmetria@gmail.com": "Brena Ferreira",
     "gestao.02@techmetria.com.br": "Miguel Carvalho",
     "gestao.03@techmetria.com.br": "Arthur Vinicius",
     "gestao.04@techmetria.com.br": "Lucas França",
