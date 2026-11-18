@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18d · sonda",
+  versao: "2026-11-18e · sinal de vida",
 
   marca: {
     nome: "Techmetria",
@@ -41,6 +41,15 @@ const CONFIG = {
 
   // Tempo de tolerância em MINUTOS antes de esconder o atendente offline
   minutosOfflineTolerancia: 2,
+
+  // O status do Blip fica GRUDADO em "Online" quando a pessoa fecha o Desk sem
+  // sair. Nenhum endpoint da API devolve a presença real com nome, então o
+  // painel exige um segundo sinal: estar com ticket aberto agora, ou ter
+  // atendido nas últimas N horas.
+  //   Efeito: quem foi embora some. Em troca, quem acabou de chegar e ainda
+  //   não atendeu só aparece no primeiro atendimento.
+  // Coloque 0 para desligar e voltar a confiar só no status do Blip.
+  horasAtividadeParaAparecer: 3,
 
   // Dias que um atendente OFFLINE continua aparecendo no ranking
   diasMemoriaHistorica: 3,
@@ -1030,6 +1039,8 @@ let statusFilaEspera = {};
 let ultimosTicketsEspera = [];
 let ultimosAtendentesApi = [];   // resposta crua de /attendants, para o diagnóstico
 let ultimaPresenca = { ok:false, reconhecido:false, ids:new Set(), bruto:null, erro:null };
+let ultimaAtividade = {};      // [email] = timestamp do atendimento mais recente
+let ticketsAbertos = null;     // [email] = tickets em atendimento agora
 let vozFila = localStorage.getItem(LS_VOZFILA) || null;
 let statusAtivos = {};          // [email] = { ultimoAviso }
 let ativosInicializado = false; // não anuncia o que já estava lá ao abrir o painel
@@ -1454,7 +1465,7 @@ function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
   $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`
     + (CONFIG.versao ? `  ·  v ${CONFIG.versao}` : '');
-  $('ft-info').textContent = `Presença ao vivo · escala por tempo sem atender · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
+  $('ft-info').textContent = `Online + sinal de vida · escala por tempo sem atender · oculta após ${CONFIG.minutosOfflineTolerancia} min`;
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
 }
@@ -1556,6 +1567,22 @@ function extrairPresenca(bruto){
            soContagem: ids.size === 0 && Object.keys(contagens).length > 0 };
 }
 
+/* /analytics/attendants traz openedTickets: quantos tickets a pessoa tem em
+   atendimento NESTE momento. É o sinal mais forte de que alguém está de fato
+   trabalhando, independente do status grudado. */
+async function buscarTicketsAbertos(){
+  try{
+    const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/analytics/attendants'});
+    const itens = (d && d.resource && d.resource.items) || [];
+    const mapa = {};
+    itens.forEach(a => {
+      const id = normId(a.identity); if(!id) return;
+      mapa[id] = Number(a.openedTickets) || 0;
+    });
+    return mapa;
+  }catch(e){ return null; }   // null = não deu para saber; não penaliza ninguém
+}
+
 async function buscarFilaEspera(){
   try{
     const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:"/tickets?$filter=status%20eq%20'Waiting'&$skip=0&$take=100"});
@@ -1612,6 +1639,15 @@ function processar(tickets){
     if(!Object.keys(historicoAgentes[fila]).length) delete historicoAgentes[fila];
   });
   lsSet(LS_HISTORY, historicoAgentes);
+
+  // atendimento mais recente de cada pessoa, somando todas as filas
+  ultimaAtividade = {};
+  Object.keys(historicoAgentes).forEach(fila => {
+    Object.keys(historicoAgentes[fila]).forEach(id => {
+      const ts = historicoAgentes[fila][id];
+      if(ts && (!ultimaAtividade[id] || ts > ultimaAtividade[id])) ultimaAtividade[id] = ts;
+    });
+  });
 
   // reinjeta quem atendeu nos últimos dias mas ainda não atendeu hoje —
   // esses aparecem mesmo offline, é a tolerância curta contra falha da API
@@ -1671,6 +1707,17 @@ function filasDoAtendente(a){
   return [...new Set(out)].filter(f => !ign.includes(norm(f)));
 }
 
+/* Segundo sinal, porque o status do Blip mente. Vale como presente quem está
+   com ticket aberto agora ou atendeu há pouco. Se a janela for 0, a checagem
+   é desligada e volta a valer só o status. */
+function temSinalDeVida(id){
+  const horas = CONFIG.horasAtividadeParaAparecer;
+  if(!horas) return true;
+  if(ticketsAbertos && ticketsAbertos[id] > 0) return true;
+  const ts = ultimaAtividade[id];
+  return !!ts && (Date.now() - ts) <= horas * 3600 * 1000;
+}
+
 /* Atualiza o status de TODO mundo que a API devolve — não só de quem já está
    no ranking. É isso que permite detectar o retorno de alguém ausente. */
 function atualizarPresenca(atendentesApi, presenca){
@@ -1685,8 +1732,9 @@ function atualizarPresenca(atendentesApi, presenca){
   atendentesApi.forEach(a => {
     const id = normId(a.identity); if(!id) return;
     registrar(id);
-    const on = aoVivo ? presenca.ids.has(id)
-                      : (a.status && a.status.toString().toLowerCase() === 'online');
+    const marcadoOnline = aoVivo ? presenca.ids.has(id)
+                                 : (a.status && a.status.toString().toLowerCase() === 'online');
+    const on = marcadoOnline && temSinalDeVida(id);
     online[id] = on;
     if(on) delete tempoOfflineCronometro[id];
     else if(!tempoOfflineCronometro[id]) tempoOfflineCronometro[id] = agora;
@@ -2049,9 +2097,10 @@ function toast(msg){
 async function atualizar(){
   try{
     novosNaRodada = [];
-    const [tickets, atendentesApi, ticketsEspera, presencaRaw] = await Promise.all([
-      buscar(), buscarAtendentesStatus(), buscarFilaEspera(), buscarAgentesOnline()
+    const [tickets, atendentesApi, ticketsEspera, presencaRaw, abertos] = await Promise.all([
+      buscar(), buscarAtendentesStatus(), buscarFilaEspera(), buscarAgentesOnline(), buscarTicketsAbertos()
     ]);
+    ticketsAbertos = abertos;
 
     const extraido = extrairPresenca(presencaRaw.bruto);
     ultimaPresenca = { ...presencaRaw, ...extraido };
