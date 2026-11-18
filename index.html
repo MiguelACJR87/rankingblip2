@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18h · monitoring",
+  versao: "2026-11-18i · icones",
 
   marca: {
     nome: "Techmetria",
@@ -93,6 +93,15 @@ const CONFIG = {
   // ----------------------------------
 
   filasIgnoradas:    ["Transferência direta", "Direct_Transfer", "Default"],
+
+  // Ícone de cada fila. A chave é o nome da fila no Blip (acento e maiúscula
+  // não importam). O arquivo fica na MESMA pasta do index.html.
+  // Fila sem ícone aqui continua usando o emoji padrão.
+  iconesFilas: {
+    "Gestao":     "fila-gestao.png",
+    "Comercial":  "fila-comercial.png",
+    "Financeiro": "fila-financeiro.png"
+  },
 
   // Nomes base. O que for editado na tela sobrescreve esta lista.
   nomesAtendentes: {
@@ -318,7 +327,8 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 .cdh::before{content:'';position:absolute;top:-30px;right:-20px;width:80px;height:80px;border-radius:50%;background:var(--q-glow);filter:blur(28px);pointer-events:none;}
 .cht{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
 .qnw{display:flex;align-items:center;gap:10px;}
-.qem{width:36px;height:36px;border-radius:10px;background:var(--s2);border:1px solid var(--border-em);display:flex;align-items:center;justify-content:center;font-size:17px;}
+.qem{width:40px;height:40px;border-radius:10px;background:var(--s2);border:1px solid var(--border-em);display:flex;align-items:center;justify-content:center;font-size:19px;overflow:hidden;flex-shrink:0;}
+.qem img{width:76%;height:76%;object-fit:contain;display:block;}
 .qn{font-size:16px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;}
 .qa{font-size:10px;font-family:var(--mono);color:var(--md);margin-top:1px;letter-spacing:.06em;}
 .vozbtn{background:none;border:1px solid var(--border);border-radius:6px;color:var(--lo);cursor:pointer;font-size:11px;padding:2px 6px;line-height:1.4;transition:.15s;}
@@ -1012,6 +1022,19 @@ const PALETA_LIGHT = [
   {cor:"#be185d",corGlow:"rgba(190,24,93,0.16)",emoji:"💡"},
   {cor:"#0369a1",corGlow:"rgba(3,105,161,0.16)",emoji:"⚡"}
 ];
+/* Ícone da fila: arquivo do CONFIG quando houver, senão o emoji da paleta.
+   A comparação ignora acento e maiúscula, então "Gestao" e "Gestão" casam. */
+function iconeFila(nome, emojiPadrao){
+  const mapa = CONFIG.iconesFilas || {};
+  const alvo = norm(nome);
+  for(const k of Object.keys(mapa)){
+    if(norm(k) === alvo && mapa[k]){
+      return `<img src="${esc(mapa[k])}" alt="${esc(nome)}" onerror="this.replaceWith(document.createTextNode('${esc(emojiPadrao)}'))" />`;
+    }
+  }
+  return esc(emojiPadrao);
+}
+
 function paleta(){
   const base = temaEfetivo === 'light' ? PALETA_LIGHT : PALETA_DARK;
   const m = CONFIG.marca || {};
@@ -2018,7 +2041,7 @@ function render(ticketsEspera = []){
       <div class="cdh">
         <div class="cht">
           <div class="qnw">
-            <div class="qem">${cfg.emoji}</div>
+            <div class="qem">${iconeFila(fila, cfg.emoji)}</div>
             <div>
               <div class="qn">${esc(fila)}
                 <button class="vozbtn ${vozAtiva ? 'on' : ''}" onclick="toggleVozFila(${i}, event)"
