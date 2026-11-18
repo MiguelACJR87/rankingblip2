@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18 · presenca ao vivo",
+  versao: "2026-11-18c",
 
   marca: {
     nome: "Techmetria",
@@ -1291,7 +1291,9 @@ function renderApi(){
     : '<b style="color:var(--yellow)">/attendants (reserva)</b>';
   const motivo = aoVivo ? ''
     : (!pres.ok ? `<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">${esc(pres.erro || 'chamada falhou')}</b></div>`
-                : '<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">formato não reconhecido</b></div>');
+                : (pres.soContagem
+                    ? `<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">a resposta traz só contagem por equipe (${esc(Object.entries(pres.contagens||{}).map(([k,v])=>k+'='+v).join(', '))}), sem dizer quem</b></div>`
+                    : '<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">sem identidades na resposta</b></div>'));
 
   sum.innerHTML =
       `<div class="api-chip">Fonte da presença${fonteTxt}</div>`
@@ -1467,7 +1469,7 @@ async function buscarAgentesOnline(){
    só nesse caso confiamos nela, para nunca esvaziar o painel por engano. */
 function extrairPresenca(bruto){
   const ids = new Set();
-  let reconhecido = false;
+  const contagens = {};
   const visitar = (v, prof) => {
     if(v == null || prof > 6) return;
     if(typeof v === 'string'){
@@ -1475,16 +1477,23 @@ function extrairPresenca(bruto){
       if(id && id.includes('@')) ids.add(id);
       return;
     }
-    if(Array.isArray(v)){ reconhecido = true; v.forEach(x => visitar(x, prof+1)); return; }
+    if(Array.isArray(v)){ v.forEach(x => visitar(x, prof+1)); return; }
     if(typeof v === 'object'){
+      // /teams/agents-online devolve { name, agentsOnline } — contagem, sem nomes
+      if(typeof v.agentsOnline === 'number' && v.name){ contagens[v.name] = v.agentsOnline; }
       ['identity','agentIdentity','userIdentity','email','attendantIdentity']
-        .forEach(k => { if(v[k]) visitar(v[k], prof+1); });
-      ['items','agents','attendants','onlineAgents','agentsOnline','teams','resource']
-        .forEach(k => { if(v[k] !== undefined){ reconhecido = true; visitar(v[k], prof+1); } });
+        .forEach(k => { if(typeof v[k] === 'string') visitar(v[k], prof+1); });
+      ['items','agents','attendants','onlineAgents','teams','resource']
+        .forEach(k => { if(v[k] !== undefined) visitar(v[k], prof+1); });
     }
   };
   visitar(bruto, 0);
-  return { reconhecido, ids };
+
+  // Só dá para usar como presença se vierem IDENTIDADES. Uma resposta que traz
+  // apenas contagens por equipe não diz QUEM está online — e tratá-la como
+  // lista de presentes zeraria o painel inteiro.
+  return { reconhecido: ids.size > 0, ids, contagens,
+           soContagem: ids.size === 0 && Object.keys(contagens).length > 0 };
 }
 
 async function buscarFilaEspera(){
