@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18f",
+  versao: "2026-11-18g · sonda+params",
 
   marca: {
     nome: "Techmetria",
@@ -1373,23 +1373,49 @@ const URIS_SONDA = [
   '/analytics/attendants/status',
   '/attendants/gestao.07%2540techmetria.com.br%40blip.ai'
 ];
+
+/* O /analytics/attendants voltou com tudo zerado na primeira sondagem, mas a
+   tela de Monitoramento mostra os mesmos campos preenchidos. Falta parametro.
+   Aqui testamos as formas mais provaveis de passar o periodo. */
+function urisAnalytics(){
+  const agora = new Date();
+  const ini = new Date(agora); ini.setHours(0,0,0,0);
+  const A = encodeURIComponent(ini.toISOString());
+  const B = encodeURIComponent(agora.toISOString());
+  return [
+    `/analytics/attendants?startDate=${A}&endDate=${B}`,
+    `/analytics/attendants?beginDate=${A}&endDate=${B}`,
+    `/analytics/attendants?initialDate=${A}&finalDate=${B}`,
+    `/analytics/attendants?startDate=${A}&endDate=${B}&$take=100`,
+    `/analytics/attendants?$filter=${encodeURIComponent("storageDate ge datetimeoffset'"+ini.toISOString()+"'")}`,
+    '/analytics/attendants?$take=100'
+  ];
+}
 let sondaRodando = false;
 
 async function sondarEndpoints(){
   if(sondaRodando) return;
   sondaRodando = true;
   const alvo = $('api-sonda');
-  alvo.innerHTML = '<div class="atd-vazio">Sondando ' + URIS_SONDA.length + ' endpoints…</div>';
+  alvo.innerHTML = '<div class="atd-vazio">Sondando ' + (URIS_SONDA.length + urisAnalytics().length) + ' endpoints…</div>';
 
   const achados = [];
-  for(const uri of URIS_SONDA){
+  const lista = URIS_SONDA.concat(urisAnalytics());
+  for(const uri of lista){
     try{
       const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri});
       const r = d && d.resource;
       let resumo;
       if(r === undefined || r === null) resumo = '(sem resource)';
       else if(Array.isArray(r)) resumo = 'array[' + r.length + '] ' + JSON.stringify(r).slice(0,180);
-      else if(r.items) resumo = 'items[' + r.items.length + '] ' + JSON.stringify(r.items[0] || {}).slice(0,180);
+      else if(r.items){
+        const p = r.items[0] || {};
+        // marca quando os campos de metrica vieram preenchidos: sinal de que os parametros pegaram
+        const vivo = r.items.some(x => (x.averageResponseTime && x.averageResponseTime !== '00:00:00')
+                                    || (x.currentStatusDateTime && !String(x.currentStatusDateTime).startsWith('0001'))
+                                    || x.isEnabled === true);
+        resumo = (vivo ? '*** PREENCHIDO *** ' : '') + 'items[' + r.items.length + '] ' + JSON.stringify(p).slice(0,200);
+      }
       else resumo = JSON.stringify(r).slice(0,180);
       achados.push({ uri, ok:true, resumo, bruto:r });
     }catch(e){
