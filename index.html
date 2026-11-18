@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18g · sonda+params",
+  versao: "2026-11-18h · monitoring",
 
   marca: {
     nome: "Techmetria",
@@ -1043,6 +1043,7 @@ let ultimosAtendentesApi = [];   // resposta crua de /attendants, para o diagnó
 let ultimaPresenca = { ok:false, reconhecido:false, ids:new Set(), bruto:null, erro:null };
 let ultimaAtividade = {};      // [email] = timestamp do atendimento mais recente
 let ticketsAbertos = null;     // [email] = tickets em atendimento agora
+let ultimoMonitoramento = null; // resposta de /monitoring/attendants
 let vozFila = localStorage.getItem(LS_VOZFILA) || null;
 let statusAtivos = {};          // [email] = { ultimoAviso }
 let ativosInicializado = false; // não anuncia o que já estava lá ao abrir o painel
@@ -1543,6 +1544,18 @@ async function buscar(teste=false){
     if(skip > 2000) break;
   }
   return todos;
+}
+
+/* /monitoring/attendants e a fonte que alimenta a tela de Monitoramento do
+   Blip: mesmos campos, mesmas colunas. Traz agentName e currentStatusDateTime
+   (a hora em que o status atual foi definido), que /attendants nao tem.
+   Se falhar, o painel usa /attendants como antes. */
+async function buscarMonitoramento(){
+  try{
+    const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/monitoring/attendants'});
+    const itens = (d && d.resource && d.resource.items) || [];
+    return itens.length ? itens : null;
+  }catch(e){ return null; }
 }
 
 async function buscarAtendentesStatus(){
@@ -2132,17 +2145,31 @@ function toast(msg){
 async function atualizar(){
   try{
     novosNaRodada = [];
-    const [tickets, atendentesApi, ticketsEspera, presencaRaw, abertos] = await Promise.all([
-      buscar(), buscarAtendentesStatus(), buscarFilaEspera(), buscarAgentesOnline(), buscarTicketsAbertos()
+    const [tickets, atendentesApi, ticketsEspera, presencaRaw, abertos, monitor] = await Promise.all([
+      buscar(), buscarAtendentesStatus(), buscarFilaEspera(), buscarAgentesOnline(),
+      buscarTicketsAbertos(), buscarMonitoramento()
     ]);
     ticketsAbertos = abertos;
+    ultimoMonitoramento = monitor;
+
+    /* O status passa a vir do monitoramento; as equipes continuam vindo de
+       /attendants, que e quem traz o campo teams. */
+    let atendentes = atendentesApi;
+    if(monitor){
+      const porId = {};
+      monitor.forEach(m => { const id = normId(m.identity); if(id) porId[id] = m; });
+      atendentes = atendentesApi.map(a => {
+        const m = porId[normId(a.identity)];
+        return m ? { ...a, status:m.status, statusDesde:m.currentStatusDateTime, ticketsAbertos:m.openedTickets } : a;
+      });
+    }
+    ultimosAtendentesApi = atendentes;
 
     const extraido = extrairPresenca(presencaRaw.bruto);
     ultimaPresenca = { ...presencaRaw, ...extraido };
 
     processar(tickets);
-    ultimosAtendentesApi = atendentesApi;
-    const online = atualizarPresenca(atendentesApi, ultimaPresenca);
+    const online = atualizarPresenca(atendentes, ultimaPresenca);
     incluirDisponiveis(online);
     lsSet(LS_HISTORY, historicoAgentes);
     limparRegistro();
