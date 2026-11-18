@@ -237,6 +237,20 @@ details.atd-add summary{cursor:pointer;font-size:12px;font-family:var(--mono);co
 details.atd-add summary::-webkit-details-marker{display:none;}
 details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 
+/* DIAGNOSTICO DA API */
+.api-sum{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;}
+.api-chip{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--md);}
+.api-chip b{display:block;font-size:17px;font-weight:700;color:var(--hi);font-family:var(--display);margin-top:2px;}
+.api-tab{max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:var(--rl);background:var(--s2);}
+.api-tab table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.api-tab th{position:sticky;top:0;background:var(--s3);color:var(--md);text-align:left;padding:8px 10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;font-size:9px;border-bottom:1px solid var(--border-em);}
+.api-tab td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--hi);vertical-align:top;}
+.api-tab tr:last-child td{border-bottom:none;}
+.api-st{font-weight:600;border-radius:4px;padding:1px 6px;white-space:nowrap;}
+.api-st.on{color:var(--green);background:var(--green-soft);border:1px solid var(--green-line);}
+.api-st.off{color:var(--red);background:var(--red-soft);border:1px solid var(--red-line);}
+.api-extra{color:var(--lo);word-break:break-all;}
+
 /* APP */
 .app{display:none;flex-direction:column;min-height:100vh;zoom:var(--ui-zoom);}
 .app.visible{display:flex;}
@@ -462,6 +476,20 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 </div>
 
 <!-- APP -->
+<!-- DIAGNOSTICO: o que a API de atendentes devolve -->
+<div class="lw overlay hidden" id="aw">
+  <div class="lc wide">
+    <div class="lh">O que a API do Blip está devolvendo</div>
+    <p class="ls">Esta tela não muda nada no painel. Ela mostra, cru, a resposta de <b>/attendants</b> — que é de onde vem a bolinha verde ou vermelha de cada pessoa.</p>
+    <div class="api-sum" id="api-sum"></div>
+    <div class="api-tab" id="api-tab"></div>
+    <div style="display:flex;gap:12px;margin-top:16px;">
+      <button class="lb ghost" onclick="copiarApi()">Copiar resposta completa</button>
+      <button class="lb" onclick="document.getElementById('aw').classList.add('hidden')">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="app" id="app">
   <header class="hd">
     <div class="logo">
@@ -482,6 +510,7 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
         <button class="out-btn" onclick="toggleFullscreen()" title="Tela cheia">⛶</button>
         <button class="out-btn" onclick="abrirConfig()" title="Voz dos anúncios">voz</button>
         <button class="out-btn" onclick="abrirAtendentes()" title="Editar nomes dos atendentes">atendentes<span class="nbadge" id="badge-nomes">0</span></button>
+        <button class="out-btn" onclick="abrirApi()" title="Ver o que a API do Blip está devolvendo">api</button>
         <button class="out-btn danger" onclick="fazerLogout()" title="Sair e remover a chave deste navegador">sair</button>
       </div>
     </div>
@@ -989,6 +1018,7 @@ let FILAS_ATUAIS = [];
 let prevProximos = {};
 let statusFilaEspera = {};
 let ultimosTicketsEspera = [];
+let ultimosAtendentesApi = [];   // resposta crua de /attendants, para o diagnóstico
 let vozFila = localStorage.getItem(LS_VOZFILA) || null;
 let statusAtivos = {};          // [email] = { ultimoAviso }
 let ativosInicializado = false; // não anuncia o que já estava lá ao abrir o painel
@@ -1219,6 +1249,74 @@ function refrescarTudo(){
   atualizarBadgeNomes();
   renderListaAtendentes();
   if($('app').classList.contains('visible')) render(ultimosTicketsEspera);
+}
+
+/* =========================================================================
+   DIAGNOSTICO DA API DE ATENDENTES
+   Mostra a resposta crua de /attendants. Só leitura — não altera o painel.
+   ========================================================================= */
+function abrirApi(){
+  $('aw').classList.remove('hidden');
+  renderApi();
+}
+
+function renderApi(){
+  const lista = ultimosAtendentesApi || [];
+  const sum = $('api-sum'), tab = $('api-tab');
+
+  if(!lista.length){
+    sum.innerHTML = '';
+    tab.innerHTML = '<div class="atd-vazio">Nenhuma resposta ainda. Espere o próximo ciclo de atualização e abra de novo.</div>';
+    return;
+  }
+
+  const ehOnline = a => (a.status && String(a.status).toLowerCase() === 'online');
+  const nOn = lista.filter(ehOnline).length;
+
+  // todos os nomes de campo que aparecem, para achar algum campo de presença
+  const campos = new Set();
+  lista.forEach(a => Object.keys(a || {}).forEach(k => campos.add(k)));
+  const extras = [...campos].filter(k => !['identity','status','name','fullName','email','teams','team'].includes(k));
+
+  sum.innerHTML =
+      `<div class="api-chip">Atendentes na resposta<b>${lista.length}</b></div>`
+    + `<div class="api-chip">Com status "online"<b style="color:var(--green)">${nOn}</b></div>`
+    + `<div class="api-chip">Demais status<b>${lista.length - nOn}</b></div>`
+    + `<div class="api-chip">Campos devolvidos<b style="font-size:11px;font-family:var(--mono);font-weight:400">${esc([...campos].join(', ')) || '—'}</b></div>`;
+
+  const linhas = lista.map(a => {
+    const id = normId(a.identity || '');
+    const st = a.status === undefined ? '(sem campo status)' : String(a.status);
+    const cls = ehOnline(a) ? 'on' : 'off';
+    const ex = extras.map(k => {
+      let v = a[k];
+      if(v && typeof v === 'object') v = JSON.stringify(v);
+      if(v === undefined || v === null || v === '') return null;
+      return `${k}=${String(v).slice(0,60)}`;
+    }).filter(Boolean).join(' · ');
+    return `<tr>
+      <td>${esc(nomeDe(id) || a.fullName || a.name || '—')}</td>
+      <td class="api-extra">${esc(id || a.identity || '—')}</td>
+      <td><span class="api-st ${cls}">${esc(st)}</span></td>
+      <td class="api-extra">${esc(ex || '—')}</td>
+    </tr>`;
+  }).join('');
+
+  tab.innerHTML = `<table>
+    <thead><tr><th>Nome</th><th>Identity</th><th>status (cru)</th><th>Outros campos</th></tr></thead>
+    <tbody>${linhas}</tbody></table>`;
+}
+
+function copiarApi(){
+  const txt = JSON.stringify(ultimosAtendentesApi || [], null, 2);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt)
+      .then(() => toast('✅ Resposta copiada. É só colar.'))
+      .catch(() => { console.log(txt); toast('⚠ Não deu para copiar. A resposta saiu no Console (F12).'); });
+  }else{
+    console.log(txt);
+    toast('⚠ Copiar não disponível aqui. A resposta saiu no Console (F12).');
+  }
 }
 
 /* =========================================================================
@@ -1816,6 +1914,7 @@ async function atualizar(){
     ]);
 
     processar(tickets);
+    ultimosAtendentesApi = atendentesApi;
     const online = atualizarPresenca(atendentesApi);
     incluirDisponiveis(online);
     lsSet(LS_HISTORY, historicoAgentes);
@@ -1848,7 +1947,7 @@ document.addEventListener('keydown', e => {
   if(e.key === 't' || e.key === 'T') ciclarTema();
   if(e.key === '+' || e.key === '=') ciclarZoom();
   if(e.key === 'f' || e.key === 'F') toggleFullscreen();
-  if(e.key === 'Escape'){ $('nw').classList.add('hidden'); $('cw').classList.add('hidden'); }
+  if(e.key === 'Escape'){ $('nw').classList.add('hidden'); $('cw').classList.add('hidden'); $('aw').classList.add('hidden'); }
 });
 </script>
 </body>
