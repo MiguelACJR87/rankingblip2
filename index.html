@@ -18,6 +18,10 @@ const CONFIG = {
   // ======================================================================
   // IDENTIDADE VISUAL — mude só aqui e o painel inteiro acompanha
   // ======================================================================
+  // Versao desta build. Aparece no rodape do painel: serve para conferir, de
+  // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
+  versao: "2026-11-18 · diagnostico api",
+
   marca: {
     nome: "Techmetria",
 
@@ -1364,7 +1368,8 @@ function fazerLogout(){
 
 function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
-  $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`;
+  $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`
+    + (CONFIG.versao ? `  ·  v ${CONFIG.versao}` : '');
   $('ft-info').textContent = `Escala por tempo sem atender · quem volta online entra na vez · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
