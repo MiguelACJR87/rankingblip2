@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18e · sinal de vida",
+  versao: "2026-11-18f",
 
   marca: {
     nome: "Techmetria",
@@ -48,8 +48,10 @@ const CONFIG = {
   // atendido nas últimas N horas.
   //   Efeito: quem foi embora some. Em troca, quem acabou de chegar e ainda
   //   não atendeu só aparece no primeiro atendimento.
-  // Coloque 0 para desligar e voltar a confiar só no status do Blip.
-  horasAtividadeParaAparecer: 3,
+  // DESLIGADO (0): o critério é estar logado, não ter atendido. Quem está
+  // online aparece mesmo sem atendimento nenhum.
+  // Se um dia quiser religar, 3 = exige ticket aberto ou atendimento em 3h.
+  horasAtividadeParaAparecer: 0,
 
   // Dias que um atendente OFFLINE continua aparecendo no ranking
   diasMemoriaHistorica: 3,
@@ -1362,7 +1364,14 @@ const URIS_SONDA = [
   '/attendance',
   '/analytics/attendants',
   '/metrics/attendants',
-  '/attendants?$filter=status%20eq%20%27Online%27'
+  '/attendants?$filter=status%20eq%20%27Online%27',
+  '/attendants/status',
+  '/attendance-queues',
+  '/queues',
+  '/monitoring',
+  '/monitoring/attendants',
+  '/analytics/attendants/status',
+  '/attendants/gestao.07%2540techmetria.com.br%40blip.ai'
 ];
 let sondaRodando = false;
 
@@ -1465,7 +1474,7 @@ function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
   $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`
     + (CONFIG.versao ? `  ·  v ${CONFIG.versao}` : '');
-  $('ft-info').textContent = `Online + sinal de vida · escala por tempo sem atender · oculta após ${CONFIG.minutosOfflineTolerancia} min`;
+  $('ft-info').textContent = `Mostra quem está online · escala por tempo sem atender · oculta após ${CONFIG.minutosOfflineTolerancia} min`;
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
 }
