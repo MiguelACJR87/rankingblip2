@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18c",
+  versao: "2026-11-18d · sonda",
 
   marca: {
     nome: "Techmetria",
@@ -487,6 +487,12 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
     <p class="ls">Esta tela não muda nada no painel. Ela mostra, cru, a resposta de <b>/attendants</b> — que é de onde vem a bolinha verde ou vermelha de cada pessoa.</p>
     <div class="api-sum" id="api-sum"></div>
     <div class="api-tab" id="api-tab"></div>
+
+    <div class="lh" style="font-size:15px;margin:20px 0 4px;">Procurar a presença real</div>
+    <p class="ls" style="margin-bottom:10px;">O Monitoramento do Blip mostra 2 online enquanto a API diz 10. Esta sondagem testa outros endpoints do desk para achar qual traz a presença de verdade.</p>
+    <button class="lb ghost" onclick="sondarEndpoints()" style="margin-bottom:12px;">Sondar endpoints</button>
+    <div class="api-tab" id="api-sonda"></div>
+
     <div style="display:flex;gap:12px;margin-top:16px;">
       <button class="lb ghost" onclick="copiarApi()">Copiar resposta completa</button>
       <button class="lb" onclick="document.getElementById('aw').classList.add('hidden')">Fechar</button>
@@ -1331,8 +1337,62 @@ function renderApi(){
     <tbody>${linhas}</tbody></table>`;
 }
 
+/* Sonda endpoints candidatos do desk para achar qual traz presença real.
+   Só roda quando o botão é clicado. Cada falha é isolada. */
+const URIS_SONDA = [
+  '/attendants',
+  '/teams/agents-online',
+  '/agents',
+  '/agents-online',
+  '/attendants-online',
+  '/attendants/online',
+  '/teams',
+  '/presence',
+  '/attendance',
+  '/analytics/attendants',
+  '/metrics/attendants',
+  '/attendants?$filter=status%20eq%20%27Online%27'
+];
+let sondaRodando = false;
+
+async function sondarEndpoints(){
+  if(sondaRodando) return;
+  sondaRodando = true;
+  const alvo = $('api-sonda');
+  alvo.innerHTML = '<div class="atd-vazio">Sondando ' + URIS_SONDA.length + ' endpoints…</div>';
+
+  const achados = [];
+  for(const uri of URIS_SONDA){
+    try{
+      const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri});
+      const r = d && d.resource;
+      let resumo;
+      if(r === undefined || r === null) resumo = '(sem resource)';
+      else if(Array.isArray(r)) resumo = 'array[' + r.length + '] ' + JSON.stringify(r).slice(0,180);
+      else if(r.items) resumo = 'items[' + r.items.length + '] ' + JSON.stringify(r.items[0] || {}).slice(0,180);
+      else resumo = JSON.stringify(r).slice(0,180);
+      achados.push({ uri, ok:true, resumo, bruto:r });
+    }catch(e){
+      achados.push({ uri, ok:false, resumo:String(e.message).slice(0,140), bruto:null });
+    }
+  }
+
+  ultimaSonda = achados;
+  alvo.innerHTML = '<table><thead><tr><th>uri</th><th>resultado</th><th>resposta</th></tr></thead><tbody>'
+    + achados.map(a => `<tr>
+        <td style="white-space:nowrap">${esc(a.uri)}</td>
+        <td><span class="api-st ${a.ok ? 'on' : 'off'}">${a.ok ? 'respondeu' : 'erro'}</span></td>
+        <td class="api-extra">${esc(a.resumo)}</td>
+      </tr>`).join('')
+    + '</tbody></table>';
+  sondaRodando = false;
+  toast('✅ Sondagem concluída. Use "Copiar resposta completa" para me mandar.');
+}
+let ultimaSonda = null;
+
 function copiarApi(){
   const txt = JSON.stringify({
+    sondagem: ultimaSonda,
     agentsOnline: (ultimaPresenca || {}).bruto,
     agentsOnlineErro: (ultimaPresenca || {}).erro || null,
     attendants: ultimosAtendentesApi || []
