@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18 · diagnostico api",
+  versao: "2026-11-18 · presenca ao vivo",
 
   marca: {
     nome: "Techmetria",
@@ -1023,6 +1023,7 @@ let prevProximos = {};
 let statusFilaEspera = {};
 let ultimosTicketsEspera = [];
 let ultimosAtendentesApi = [];   // resposta crua de /attendants, para o diagnóstico
+let ultimaPresenca = { ok:false, reconhecido:false, ids:new Set(), bruto:null, erro:null };
 let vozFila = localStorage.getItem(LS_VOZFILA) || null;
 let statusAtivos = {};          // [email] = { ultimoAviso }
 let ativosInicializado = false; // não anuncia o que já estava lá ao abrir o painel
@@ -1274,19 +1275,32 @@ function renderApi(){
     return;
   }
 
+  const pres = ultimaPresenca || {};
+  const aoVivo = !!(pres.ok && pres.reconhecido);
   const ehOnline = a => (a.status && String(a.status).toLowerCase() === 'online');
   const nOn = lista.filter(ehOnline).length;
+  const nVivo = pres.ids ? pres.ids.size : 0;
 
   // todos os nomes de campo que aparecem, para achar algum campo de presença
   const campos = new Set();
   lista.forEach(a => Object.keys(a || {}).forEach(k => campos.add(k)));
   const extras = [...campos].filter(k => !['identity','status','name','fullName','email','teams','team'].includes(k));
 
+  const fonteTxt = aoVivo
+    ? '<b style="color:var(--green)">/teams/agents-online</b>'
+    : '<b style="color:var(--yellow)">/attendants (reserva)</b>';
+  const motivo = aoVivo ? ''
+    : (!pres.ok ? `<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">${esc(pres.erro || 'chamada falhou')}</b></div>`
+                : '<div class="api-chip">Por que a reserva<b style="font-size:11px;font-weight:400;font-family:var(--mono)">formato não reconhecido</b></div>');
+
   sum.innerHTML =
-      `<div class="api-chip">Atendentes na resposta<b>${lista.length}</b></div>`
-    + `<div class="api-chip">Com status "online"<b style="color:var(--green)">${nOn}</b></div>`
-    + `<div class="api-chip">Demais status<b>${lista.length - nOn}</b></div>`
-    + `<div class="api-chip">Campos devolvidos<b style="font-size:11px;font-family:var(--mono);font-weight:400">${esc([...campos].join(', ')) || '—'}</b></div>`;
+      `<div class="api-chip">Fonte da presença${fonteTxt}</div>`
+    + `<div class="api-chip">Conectados agora<b style="color:var(--green)">${aoVivo ? nVivo : '—'}</b></div>`
+    + motivo
+    + `<div class="api-chip">Atendentes cadastrados<b>${lista.length}</b></div>`
+    + `<div class="api-chip">Com status "Online" (grudado)<b style="color:var(--yellow)">${nOn}</b></div>`
+    + `<div class="api-chip">Campos de /attendants<b style="font-size:11px;font-family:var(--mono);font-weight:400">${esc([...campos].join(', ')) || '—'}</b></div>`
+    + `<div class="api-chip" style="flex-basis:100%">Resposta crua de /teams/agents-online<b style="font-size:10px;font-weight:400;font-family:var(--mono);word-break:break-all;max-height:90px;overflow:auto">${esc(JSON.stringify(pres.bruto)).slice(0,1200) || '—'}</b></div>`;
 
   const linhas = lista.map(a => {
     const id = normId(a.identity || '');
@@ -1298,21 +1312,29 @@ function renderApi(){
       if(v === undefined || v === null || v === '') return null;
       return `${k}=${String(v).slice(0,60)}`;
     }).filter(Boolean).join(' · ');
+    const vivo = aoVivo
+      ? (pres.ids.has(id) ? '<span class="api-st on">conectado</span>' : '<span class="api-st off">fora</span>')
+      : '<span class="api-extra">—</span>';
     return `<tr>
       <td>${esc(nomeDe(id) || a.fullName || a.name || '—')}</td>
       <td class="api-extra">${esc(id || a.identity || '—')}</td>
       <td><span class="api-st ${cls}">${esc(st)}</span></td>
+      <td>${vivo}</td>
       <td class="api-extra">${esc(ex || '—')}</td>
     </tr>`;
   }).join('');
 
   tab.innerHTML = `<table>
-    <thead><tr><th>Nome</th><th>Identity</th><th>status (cru)</th><th>Outros campos</th></tr></thead>
+    <thead><tr><th>Nome</th><th>Identity</th><th>status grudado</th><th>presença ao vivo</th><th>Outros campos</th></tr></thead>
     <tbody>${linhas}</tbody></table>`;
 }
 
 function copiarApi(){
-  const txt = JSON.stringify(ultimosAtendentesApi || [], null, 2);
+  const txt = JSON.stringify({
+    agentsOnline: (ultimaPresenca || {}).bruto,
+    agentsOnlineErro: (ultimaPresenca || {}).erro || null,
+    attendants: ultimosAtendentesApi || []
+  }, null, 2);
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt)
       .then(() => toast('✅ Resposta copiada. É só colar.'))
@@ -1370,7 +1392,7 @@ function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
   $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`
     + (CONFIG.versao ? `  ·  v ${CONFIG.versao}` : '');
-  $('ft-info').textContent = `Escala por tempo sem atender · quem volta online entra na vez · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
+  $('ft-info').textContent = `Presença ao vivo · escala por tempo sem atender · oculta offline após ${CONFIG.minutosOfflineTolerancia} min`;
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
 }
@@ -1425,6 +1447,44 @@ async function buscarAtendentesStatus(){
     if(items.length < PAGE) continua = false; else skip += PAGE;
   }
   return todos;
+}
+
+/* O campo status de /attendants fica GRUDADO: guarda o último status que a
+   pessoa escolheu e não muda quando ela fecha o Desk. Quem encerra o dia em
+   "Online" aparece Online para sempre. Este endpoint devolve quem está de
+   fato conectado agora. Se ele falhar, o painel volta a usar /attendants. */
+async function buscarAgentesOnline(){
+  try{
+    const d = await chamadaWorker({id:uuid(),to:'postmaster@desk.msging.net',method:'get',uri:'/teams/agents-online'});
+    return { ok:true, bruto: (d && d.resource !== undefined) ? d.resource : null, erro:null };
+  }catch(e){
+    return { ok:false, bruto:null, erro:e.message };
+  }
+}
+
+/* Lê a resposta sem depender do formato exato: varre a estrutura e recolhe
+   tudo que parecer uma identidade. "reconhecido" diz se achamos uma lista —
+   só nesse caso confiamos nela, para nunca esvaziar o painel por engano. */
+function extrairPresenca(bruto){
+  const ids = new Set();
+  let reconhecido = false;
+  const visitar = (v, prof) => {
+    if(v == null || prof > 6) return;
+    if(typeof v === 'string'){
+      const id = normId(v);
+      if(id && id.includes('@')) ids.add(id);
+      return;
+    }
+    if(Array.isArray(v)){ reconhecido = true; v.forEach(x => visitar(x, prof+1)); return; }
+    if(typeof v === 'object'){
+      ['identity','agentIdentity','userIdentity','email','attendantIdentity']
+        .forEach(k => { if(v[k]) visitar(v[k], prof+1); });
+      ['items','agents','attendants','onlineAgents','agentsOnline','teams','resource']
+        .forEach(k => { if(v[k] !== undefined){ reconhecido = true; visitar(v[k], prof+1); } });
+    }
+  };
+  visitar(bruto, 0);
+  return { reconhecido, ids };
 }
 
 async function buscarFilaEspera(){
@@ -1544,14 +1604,20 @@ function filasDoAtendente(a){
 
 /* Atualiza o status de TODO mundo que a API devolve — não só de quem já está
    no ranking. É isso que permite detectar o retorno de alguém ausente. */
-function atualizarPresenca(atendentesApi){
+function atualizarPresenca(atendentesApi, presenca){
   const agora = Date.now();
   const online = {};
+
+  // Só confiamos na presença ao vivo quando a chamada deu certo E a resposta
+  // veio num formato reconhecível. Fora disso, cai no status de /attendants,
+  // que é o comportamento antigo.
+  const aoVivo = !!(presenca && presenca.ok && presenca.reconhecido);
 
   atendentesApi.forEach(a => {
     const id = normId(a.identity); if(!id) return;
     registrar(id);
-    const on = (a.status && a.status.toString().toLowerCase() === 'online');
+    const on = aoVivo ? presenca.ids.has(id)
+                      : (a.status && a.status.toString().toLowerCase() === 'online');
     online[id] = on;
     if(on) delete tempoOfflineCronometro[id];
     else if(!tempoOfflineCronometro[id]) tempoOfflineCronometro[id] = agora;
@@ -1914,13 +1980,16 @@ function toast(msg){
 async function atualizar(){
   try{
     novosNaRodada = [];
-    const [tickets, atendentesApi, ticketsEspera] = await Promise.all([
-      buscar(), buscarAtendentesStatus(), buscarFilaEspera()
+    const [tickets, atendentesApi, ticketsEspera, presencaRaw] = await Promise.all([
+      buscar(), buscarAtendentesStatus(), buscarFilaEspera(), buscarAgentesOnline()
     ]);
+
+    const extraido = extrairPresenca(presencaRaw.bruto);
+    ultimaPresenca = { ...presencaRaw, ...extraido };
 
     processar(tickets);
     ultimosAtendentesApi = atendentesApi;
-    const online = atualizarPresenca(atendentesApi);
+    const online = atualizarPresenca(atendentesApi, ultimaPresenca);
     incluirDisponiveis(online);
     lsSet(LS_HISTORY, historicoAgentes);
     limparRegistro();
