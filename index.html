@@ -20,7 +20,7 @@ const CONFIG = {
   // ======================================================================
   // Versao desta build. Aparece no rodape do painel: serve para conferir, de
   // relance, se a TV ja carregou a versao nova ou ainda esta em cache.
-  versao: "2026-11-18i · icones",
+  versao: "2026-11-23 · menu único",
 
   marca: {
     nome: "Techmetria",
@@ -194,7 +194,6 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;back
 .li.img{width:40px;height:40px;}
 .lli.img{width:60px;height:60px;padding:3px;}
 .li img,.lli img{display:block;width:100%;height:100%;object-fit:contain;border-radius:50%;}
-.marca-tag{font-size:9px;font-family:var(--mono);color:var(--lo);letter-spacing:.14em;text-transform:uppercase;}
 
 /* LOGIN & MODAIS */
 .lw{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;}
@@ -293,7 +292,18 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
 .clk{font-size:12px;font-family:var(--mono);color:var(--md);letter-spacing:.06em;}
 .dtag{font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.08em;text-transform:uppercase;}
-.tools{display:flex;align-items:center;gap:6px;padding-left:10px;border-left:1px solid var(--border);}
+.tools{position:relative;display:flex;align-items:center;gap:6px;padding-left:10px;border-left:1px solid var(--border);}
+.menu{position:absolute;top:calc(100% + 10px);right:0;z-index:60;min-width:238px;background:var(--s1);border:1px solid var(--border-em);border-radius:var(--rl);box-shadow:var(--shadow);padding:6px;display:none;}
+.menu.show{display:block;}
+.menu-i{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;background:none;border:none;border-radius:8px;color:var(--hi);font-family:var(--display);font-size:13px;font-weight:500;padding:9px 12px;cursor:pointer;text-align:left;transition:background .15s,color .15s;}
+.menu-i:hover{background:var(--s2);}
+.menu-i b{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--md);}
+.menu-i.danger{color:var(--md);}
+.menu-i.danger:hover{background:var(--red-soft);color:var(--red);}
+.menu-sep{height:1px;background:var(--border);margin:6px 10px;}
+.menu-ver{font-size:9px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;padding:9px 12px 3px;border-top:1px solid var(--border);margin-top:4px;line-height:1.7;}
+.mi-badge{min-width:18px;height:18px;border-radius:9px;background:var(--yellow);color:var(--bg);font-size:10px;font-weight:700;font-family:var(--mono);display:none;align-items:center;justify-content:center;padding:0 5px;}
+.mi-badge.show{display:flex;}
 .out-btn{position:relative;font-size:11px;font-family:var(--mono);color:var(--lo);background:none;border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;letter-spacing:.06em;transition:color .15s,border-color .15s,background .15s;}
 .out-btn:hover{color:var(--hi);border-color:var(--border-em);background:var(--s2);}
 .out-btn.danger:hover{color:var(--red);border-color:var(--red-line);background:var(--red-soft);}
@@ -381,7 +391,6 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 .badge-ult{font-size:9px;font-family:var(--mono);color:var(--q-cor);background:var(--q-cor-a);border:1px solid var(--q-cor-b);border-radius:4px;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;}
 .cdf{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;}
 .fl2{color:var(--q-cor);font-weight:500;}
-.ft{border-top:1px solid var(--border);padding:14px 28px;display:flex;justify-content:space-between;align-items:center;font-size:10px;font-family:var(--mono);color:var(--lo);letter-spacing:.06em;position:relative;z-index:1;}
 
 /* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--s2);border:1px solid var(--green-line);border-radius:var(--r);padding:12px 18px;font-size:12px;font-family:var(--mono);color:var(--green);max-width:340px;line-height:1.7;opacity:0;transform:translateY(12px);transition:opacity .3s,transform .3s;pointer-events:none;box-shadow:var(--shadow);}
@@ -398,17 +407,17 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
 }
 
 /* RESPONSIVIDADE */
-@media (max-width:900px){.hd{padding:0 16px;}.mn{padding:16px 16px 24px;}.ft{padding:14px 16px;}}
+@media (max-width:900px){.hd{padding:0 16px;}.mn{padding:16px 16px 24px;}}
 @media (max-width:700px){
   .hd{height:auto;flex-direction:column;padding:16px;gap:14px;text-align:center;}
   .logo{width:100%;justify-content:center;}
   .hr{width:100%;justify-content:center;flex-wrap:wrap;gap:10px;}
   .tools{border-left:none;padding-left:0;flex-wrap:wrap;justify-content:center;}
+  .menu{right:50%;transform:translateX(50%);min-width:min(260px,88vw);}
   .sb{justify-content:center;gap:6px;}
   .sc{flex:1 1 calc(33% - 6px);padding:8px;text-align:center;}
   .dv{display:none;}
   .lu{margin-left:0;width:100%;text-align:center;margin-top:8px;}
-  .ft{flex-direction:column;text-align:center;gap:10px;}
   .cdf{flex-direction:column;text-align:center;gap:8px;}
   .lc{padding:28px 24px;margin:0 12px;}
 }
@@ -536,13 +545,33 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
       <div class="pill" id="pill"><span class="dot"></span><span id="ptxt">conectando</span></div>
 
       <div class="tools">
-        <button class="out-btn" id="btn-tema" onclick="ciclarTema()" title="Alternar entre tema automático, escuro e claro">auto</button>
-        <button class="out-btn" id="btn-zoom" onclick="ciclarZoom()" title="Tamanho da tela — use 130% ou 150% na TV">100%</button>
-        <button class="out-btn" onclick="toggleFullscreen()" title="Tela cheia">⛶</button>
-        <button class="out-btn" onclick="abrirConfig()" title="Voz dos anúncios">voz</button>
-        <button class="out-btn" onclick="abrirAtendentes()" title="Editar nomes dos atendentes">atendentes<span class="nbadge" id="badge-nomes">0</span></button>
-        <button class="out-btn" onclick="abrirApi()" title="Ver o que a API do Blip está devolvendo">api</button>
-        <button class="out-btn danger" onclick="fazerLogout()" title="Sair e remover a chave deste navegador">sair</button>
+        <button class="out-btn" id="btn-menu" onclick="alternarMenu(event)" aria-haspopup="true" aria-expanded="false"
+                title="Configuração do painel">configuração<span class="nbadge" id="badge-nomes">0</span></button>
+
+        <div class="menu" id="menu" role="menu">
+          <button class="menu-i" role="menuitem" onclick="ciclarTema()">
+            <span>Tema</span><b id="btn-tema">auto</b></button>
+          <button class="menu-i" role="menuitem" onclick="ciclarZoom()">
+            <span>Tamanho da tela</span><b id="btn-zoom">100%</b></button>
+          <button class="menu-i" role="menuitem" onclick="fecharMenu();toggleFullscreen()">
+            <span>Tela cheia</span><b>F</b></button>
+
+          <div class="menu-sep"></div>
+
+          <button class="menu-i" role="menuitem" onclick="fecharMenu();abrirConfig()">
+            <span>Voz dos anúncios</span></button>
+          <button class="menu-i" role="menuitem" onclick="fecharMenu();abrirAtendentes()">
+            <span>Atendentes</span><span class="mi-badge" id="mi-badge">0</span></button>
+          <button class="menu-i" role="menuitem" onclick="fecharMenu();abrirApi()">
+            <span>Diagnóstico da API</span></button>
+
+          <div class="menu-sep"></div>
+
+          <button class="menu-i danger" role="menuitem" onclick="fecharMenu();fazerLogout()">
+            <span>Sair do painel</span></button>
+
+          <div class="menu-ver" id="menu-ver"></div>
+        </div>
       </div>
     </div>
   </header>
@@ -553,11 +582,7 @@ details.atd-add[open] summary{margin-bottom:12px;color:var(--hi);}
     <div class="gd" id="gd"></div>
   </main>
 
-  <footer class="ft">
-    <span class="marca-tag" data-marca-nome>Techmetria</span>
-    <span id="ft-info">Identificação por e-mail · memória de 3 dias · oculta offline após 2 min</span>
-    <span id="fi2">atualização a cada — s</span>
-  </footer>
+
 </div>
 
 <div class="toast" id="toast"></div>
@@ -923,6 +948,33 @@ function ciclarZoom(){
   localStorage.setItem(LS_ZOOM, ZOOMS[(i + 1) % ZOOMS.length]);
   aplicarZoom();
 }
+/* Menu de configuração: um botão só no lugar dos sete antigos. */
+function alternarMenu(ev){
+  if(ev) ev.stopPropagation();
+  const m = $('menu');
+  const abrir = !m.classList.contains('show');
+  m.classList.toggle('show', abrir);
+  $('btn-menu').setAttribute('aria-expanded', abrir ? 'true' : 'false');
+  if(abrir) atualizarRodapeMenu();
+}
+function fecharMenu(){
+  const m = $('menu'); if(!m) return;
+  m.classList.remove('show');
+  $('btn-menu').setAttribute('aria-expanded','false');
+}
+/* O que ficava no rodapé agora vive no pé do menu, fora do caminho da TV. */
+function atualizarRodapeMenu(){
+  const el = $('menu-ver'); if(!el) return;
+  el.innerHTML = `atualização a cada ${CONFIG.intervaloSegundos}s`
+    + `<br>oculta offline após ${CONFIG.minutosOfflineTolerancia} min`
+    + (CONFIG.versao ? `<br>v ${esc(CONFIG.versao)}` : '');
+}
+/* clique fora fecha */
+document.addEventListener('click', e => {
+  const m = $('menu');
+  if(m && m.classList.contains('show') && !e.target.closest('.tools')) fecharMenu();
+});
+
 function toggleFullscreen(){
   if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
   else document.exitFullscreen();
@@ -1095,8 +1147,11 @@ function limparRegistro(){
 }
 function contarSemNome(){ return Object.keys(registro).filter(id => !temNomeDefinido(id)).length; }
 function atualizarBadgeNomes(){
-  const n = contarSemNome(); const b = $('badge-nomes'); if(!b) return;
-  b.textContent = n; b.classList.toggle('show', n > 0);
+  const n = contarSemNome();
+  [['badge-nomes', n], ['mi-badge', n]].forEach(([id, v]) => {
+    const el = $(id); if(!el) return;
+    el.textContent = v; el.classList.toggle('show', v > 0);
+  });
 }
 
 /* =========================================================================
@@ -1522,9 +1577,7 @@ function fazerLogout(){
 
 function abrirApp(){
   $('lw').classList.add('hidden'); $('app').classList.add('visible');
-  $('fi2').textContent = `atualização a cada ${CONFIG.intervaloSegundos}s`
-    + (CONFIG.versao ? `  ·  v ${CONFIG.versao}` : '');
-  $('ft-info').textContent = `Mostra quem está online · escala por tempo sem atender · oculta após ${CONFIG.minutosOfflineTolerancia} min`;
+  atualizarRodapeMenu();
   aplicarTema(false); aplicarZoom(); atualizarBadgeNomes();
   iniciarCiclo();
 }
@@ -2224,7 +2277,7 @@ document.addEventListener('keydown', e => {
   if(e.key === 't' || e.key === 'T') ciclarTema();
   if(e.key === '+' || e.key === '=') ciclarZoom();
   if(e.key === 'f' || e.key === 'F') toggleFullscreen();
-  if(e.key === 'Escape'){ $('nw').classList.add('hidden'); $('cw').classList.add('hidden'); $('aw').classList.add('hidden'); }
+  if(e.key === 'Escape'){ fecharMenu(); $('nw').classList.add('hidden'); $('cw').classList.add('hidden'); $('aw').classList.add('hidden'); }
 });
 </script>
 </body>
